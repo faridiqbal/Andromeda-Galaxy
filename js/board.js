@@ -26,8 +26,8 @@ const Board = (() => {
 
   // How many of each element a board has (the layout itself is randomised every game)
   // How many of each element the current board has. Re-picked at random for every layout:
-  // 6 boosts and 6 hazards, every kind at least once, the 2 extra of each side random.
-  const PER_SIDE = 6;
+  // 7 boosts and 7 hazards, every kind at least once, the 3 extra of each side random.
+  const PER_SIDE = 7;
   let COUNTS = {};
 
   // How far each kind moves you, in squares [min, max]
@@ -151,7 +151,7 @@ const Board = (() => {
 
   /**
    * Fairness: each third of the board (2–33, 34–66, 67–99) gets at least 2 boosts and
-   * 2 hazards (with 6 of each, that's exactly 2 + 2 per third).
+   * 2 hazards (with 7 of each, one third gets a third boost / hazard).
    * There is also always at least one hazard starting on squares 95–99, and no board row
    * holds more than 3 element squares (starts and destinations together).
    */
