@@ -70,6 +70,22 @@ const Sfx = (() => {
     turn() { tone(659, 0.25, { type: "triangle", vol: 0.07 }); tone(988, 0.35, { type: "triangle", vol: 0.06, delay: 0.1 }); },
     zoom(dir = 1) { noise(0.45, { vol: 0.07, freq: dir > 0 ? 400 : 2400, to: dir > 0 ? 2400 : 400, q: 0.8, attack: 0.15 }); },
     error() { tone(160, 0.15, { type: "square", vol: 0.05 }); },
+    /** Warning / fanfare sting that announces an effect before it plays. */
+    alert(kind = "up") {
+      if (kind === "up") {
+        [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.3, { type: "triangle", vol: 0.09, delay: i * 0.09 }));
+        noise(0.8, { vol: 0.08, freq: 600, to: 4000, q: 0.8, attack: 0.3 });
+      } else if (kind === "down") {
+        [0, 0.28].forEach(d => { tone(880, 0.22, { type: "square", vol: 0.05, to: 440, delay: d }); });
+        tone(220, 0.8, { type: "sawtooth", vol: 0.04, to: 110, delay: 0.1 });
+      } else if (kind === "bounce") {
+        tone(392, 0.25, { type: "triangle", vol: 0.09, to: 784 });
+        tone(784, 0.35, { type: "triangle", vol: 0.08, to: 392, delay: 0.3 });
+      } else { // cosmic event
+        [262, 330, 392, 523, 659].forEach((f, i) => tone(f, 1.1, { type: "sine", vol: 0.07, delay: i * 0.1 }));
+        tone(131, 1.5, { type: "triangle", vol: 0.08 });
+      }
+    },
 
     // dice & movement
     whoosh() { noise(0.4, { vol: 0.14, freq: 500, to: 2600, q: 0.7, attack: 0.08 }); },

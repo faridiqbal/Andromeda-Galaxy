@@ -548,15 +548,17 @@
       if (i > 0 && path[i] < path[i - 1]) dir = -1;
       await hopTo(p, path[i], i, dir);
       if (path[i] === GOAL && i < path.length - 1) {
+        const left = path.length - 1 - i;
+        Sfx.alert("bounce");
         Sfx.bounce();
-        Particles.ring(cell(GOAL).x, cell(GOAL).y, "#36d1ff", 80, 0.5);
+        toast("🪃 Gravity slingshot!", `${p.emoji} ${escapeHtml(p.name)} overshot Andromeda and bounces back ${left} square${left > 1 ? "s" : ""}`, "bounce");
+        await windUp(p.x, p.y, "#36d1ff", p);
       }
     }
     hideGhost();
     p.pos = final;
 
     log(`${p.name} rolled ${value}: ${start} → ${final}${bounced ? " (bounced)" : ""}`, p.color);
-    if (bounced) await toast("🪃 Gravity slingshot!", `Overshot Andromeda, bounced back to ${final}`, "bounce");
 
     await resolveLanding(p, true);
     p.el.classList.remove("moving");
@@ -567,9 +569,13 @@
     if (p.pos === GOAL) return win(p);
 
     if (value === 6) {
+      Camera.focus(p.x, p.y, 2.1);
+      Sfx.alert("up");
+      toast("🔥 Afterburner!", `${p.emoji} ${escapeHtml(p.name)} rolled a 6 and rolls again!`, "up");
+      await windUp(p.x, p.y, "#ff9e00", p);
       Sfx.afterburner();
-      Particles.emit(p.x, p.y, { ...Particles.FX.fire, count: 40, speed: [60, 180] });
-      await toast("🔥 Afterburner!", `${p.name} rolled a 6: roll again!`, "up");
+      Particles.emit(p.x, p.y, { ...Particles.FX.fire, count: 60, speed: [60, 200] });
+      await sleep(900);
       log(`🔥 ${p.name} fires the afterburner for another roll.`, p.color);
       extraRoll = true;
       return beginTurn();
@@ -584,15 +590,17 @@
       const rivals = players.filter(o => o !== p && o.pos === p.pos);
       for (const r of rivals) {
         Camera.focus(r.x, r.y, 2.3);
+        const back = Math.max(1, r.pos - BUMP_BACK);
+        Sfx.alert("down");
+        toast("💥 Collision!", `${p.emoji} ${escapeHtml(p.name)} rams ${r.emoji} ${escapeHtml(r.name)}: ${delta(r.pos, back)}`, "down");
+        await windUp(r.x, r.y, "#ffffff", r);
         Sfx.bump();
         shake(9);
         Particles.emit(r.x, r.y, { colors: [p.color, r.color, "#ffffff"], count: 45, speed: [80, 260], size: [2, 5], shape: "streak" });
         Particles.ring(r.x, r.y, "#ffffff", 90, 0.5);
-        toast("💥 Collision!", `${p.name} knocks ${r.name} back ${BUMP_BACK}`, "down");
         log(`💥 ${p.name} rammed ${r.name} back ${BUMP_BACK} squares.`, p.color);
         r.el.classList.add("moving");
         Camera.follow(at(r), 2.1);
-        const back = Math.max(1, r.pos - BUMP_BACK);
         for (let n = r.pos - 1, i = 0; n >= back; n--, i++) await hopTo(r, n, i, -1);
         r.pos = back;
         await resolveJump(r);
@@ -610,7 +618,9 @@
     const from = p.pos;
     Camera.fit(cell(from), cell(j.to), 200);
     grp && grp.classList.add("active");
-    toast(`${k.icon} ${k.title}`, `${from} → ${j.to}`, k.up ? "up" : "down");
+    Sfx.alert(k.up ? "up" : "down");
+    toast(`${k.icon} ${k.title}`, `${p.emoji} ${escapeHtml(p.name)}: ${delta(from, j.to)}`, k.up ? "up" : "down");
+    await windUp(p.x, p.y, KIND_COLOR[j.kind], p);
     await ANIM[j.kind](p, from, j.to);
     grp && grp.classList.remove("active");
     p.pos = j.to;
@@ -618,6 +628,32 @@
     log(`${k.icon} ${p.name} ${k.verb} ${j.to}.`, p.color);
     Camera.focus(p.x, p.y, 2.1);
     await sleep(350);
+  }
+
+  const EFFECT_LEAD = 800; // build-up before any effect plays, so players see what's coming
+  const KIND_COLOR = {
+    rocket: "#ffd166", ufo: "#3ee08f", wormhole: "#c77dff", comet: "#7fe7ff",
+    storm: "#7fb8ff", blackhole: "#ff7b54", asteroid: "#ff6b35", flare: "#ffd166",
+  };
+
+  /** 800 ms anticipation: pulsing rings, gathering particles and a trembling piece. */
+  async function windUp(x, y, color, p) {
+    if (p) { p.el.style.setProperty("--cc", color); p.el.classList.add("charging"); }
+    for (let i = 0; i < 4; i++) {
+      setTimeout(() => {
+        const px = p ? p.x : x, py = p ? p.y : y;
+        Particles.ring(px, py, color, 55 + i * 18, 0.45);
+        Particles.emit(px, py, { colors: [color, "#ffffff"], count: 12, jitter: 80, speed: [0, 10], attract: { x: px, y: py, k: 260 }, life: [0.35, 0.6], size: [2, 4] });
+      }, i * 200);
+    }
+    await sleep(EFFECT_LEAD);
+    if (p) p.el.classList.remove("charging");
+  }
+
+  /** "17 → 7 (−10)" with the change coloured up/down. */
+  function delta(from, to) {
+    const d = to - from;
+    return `${from} → ${to} <b class="${d >= 0 ? "d-up" : "d-down"}">(${d >= 0 ? "+" : "−"}${Math.abs(d)})</b>`;
   }
 
   const TURN_GAP = 500; // pause after a turn finishes before the next player starts
@@ -653,6 +689,7 @@
     phase = "moving";
     refreshControls();
     Camera.overview();
+    Sfx.alert("event");
     Sfx.event();
     $("#board").classList.add("event-flash");
     setTimeout(() => $("#board").classList.remove("event-flash"), 1200);
@@ -661,7 +698,9 @@
       Particles.emit(Math.random() * 1000, -20, { colors: ["#e0c3ff", "#ffffff", "#7fe7ff"], count: 1, angle: Math.PI * 0.62, spread: 0.1, speed: [500, 800], life: [1.2, 1.8], shape: "streak", size: [3, 5], drag: 1 });
     }
     log(`🌌 Cosmic event: ${ev.title}! ${ev.text}.`);
-    await toast(`${ev.icon} ${ev.title}`, ev.text, "event", 1.6);
+    toast(`🌌 Cosmic event: ${ev.icon} ${ev.title}`, ev.text, "event", { hold: 3 });
+    await windUp(500, 500, "#c77dff");
+    await sleep(700);
 
     const moveBy = async (p, delta) => {
       if (!delta) return;
@@ -816,16 +855,17 @@
     while (ol.children.length > 60) ol.lastChild.remove();
   }
 
-  function toast(title, sub, kind, hold = 0.9) {
+  /** Result banner at the top of the board. Stays ~2.6 s so it can be read. */
+  function toast(title, sub, kind, { hold = 2.6 } = {}) {
     const t = $("#toast");
     t.className = `toast ${kind || ""}`;
-    t.innerHTML = `${title}<small>${sub || ""}</small>`;
+    t.innerHTML = `<div class="toast-title">${title}</div>${sub ? `<div class="toast-sub">${sub}</div>` : ""}`;
     gsap.killTweensOf(t);
     return new Promise(res => {
       gsap.timeline({ onComplete: res })
-        .fromTo(t, { opacity: 0, scale: 0.85, xPercent: -50, yPercent: 0, y: -24 },
-          { opacity: 1, scale: 1, y: 0, duration: 0.35, ease: "back.out(2)" })
-        .to(t, { opacity: 0, y: -16, duration: 0.3, delay: hold });
+        .fromTo(t, { opacity: 0, scale: 0.8, xPercent: -50, yPercent: 0, y: -24 },
+          { opacity: 1, scale: 1, y: 0, duration: 0.4, ease: "back.out(2)" })
+        .to(t, { opacity: 0, y: -16, duration: 0.35, delay: hold });
     });
   }
 
@@ -839,6 +879,25 @@
     $("#legend").innerHTML = `
       <div><h4 class="up">Boosts ▲</h4><ul>${ups.join("")}</ul></div>
       <div><h4 class="down">Hazards ▼</h4><ul>${downs.join("")}</ul></div>`;
+  }
+
+  function toggleFullscreen() {
+    const d = document, el = d.documentElement;
+    if (d.fullscreenElement || d.webkitFullscreenElement) {
+      (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+      return;
+    }
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    const fail = () => {
+      Sfx.error();
+      if ($("#game").classList.contains("active")) toast("⛶ Full screen blocked", "This page can't go full screen here. Open it in its own browser tab and try again.", "bounce", { hold: 3 });
+      else alert("Full screen isn't allowed in this view. Open the game in its own browser tab and try again.");
+    };
+    if (!req) return fail();
+    try {
+      const r = req.call(el);
+      if (r && r.catch) r.catch(fail);
+    } catch { fail(); }
   }
 
   // ==================================================================
@@ -905,6 +964,14 @@
     $("#mute-btn").onclick = e => { e.currentTarget.textContent = Sfx.toggle() ? "🔇" : "🔊"; e.currentTarget.classList.toggle("off", Sfx.muted); };
     $("#music-btn").onclick = e => { const on = Music.toggle(); e.currentTarget.classList.toggle("off", !on); e.currentTarget.title = on ? "Music on" : "Music off"; };
     $("#test-go").onclick = testTeleport;
+    document.querySelectorAll(".fs-toggle").forEach(b => (b.onclick = toggleFullscreen));
+    const fsSync = () => {
+      const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      document.querySelectorAll(".fs-toggle").forEach(b => { b.classList.toggle("on", on); b.title = on ? "Exit full screen (F)" : "Full screen (F)"; });
+      setTimeout(() => Dice3D.resize(), 150);
+    };
+    document.addEventListener("fullscreenchange", fsSync);
+    document.addEventListener("webkitfullscreenchange", fsSync);
     $("#zoom-in").onclick = () => Camera.zoomAt(1.4);
     $("#zoom-out").onclick = () => Camera.zoomAt(1 / 1.4);
     $("#zoom-reset").onclick = () => Camera.reset();
@@ -924,7 +991,8 @@
         if (ae && ae.tagName === "BUTTON" && ae !== $("#roll-btn")) return;
         e.preventDefault();
         if (players.length && !cur().cpu) onRoll();
-      } else if (e.key === "+" || e.key === "=") Camera.zoomAt(1.3);
+      } else if (e.key === "f" || e.key === "F") toggleFullscreen();
+      else if (e.key === "+" || e.key === "=") Camera.zoomAt(1.3);
       else if (e.key === "-") Camera.zoomAt(1 / 1.3);
       else if (e.key === "0") Camera.reset();
     });
