@@ -267,11 +267,32 @@ kbd { font-family: var(--font-body); font-size: 0.75em; padding: 1px 6px; border
 @keyframes pulseGlow { 50% { transform: scale(1.15); opacity: 0.8; } }
 .beam-spot { transform-box: fill-box; transform-origin: center; animation: spotPulse 1.6s ease-in-out infinite; }
 @keyframes spotPulse { 50% { transform: scale(1.25); } }
-.asteroid-fire { animation: flicker 0.15s infinite alternate; transform-box: fill-box; transform-origin: 0% 100%; }
 .flare-plasma { animation: plasma 1.2s ease-in-out infinite; }
 @keyframes plasma { 50% { opacity: 0.65; } }
 .pad-ring { transform-box: fill-box; transform-origin: center; animation: spinSlow 10s linear infinite; }
-.serpent-eye { animation: blink 4s infinite; transform-box: fill-box; transform-origin: center; }
+.bolt-flicker { animation: boltFlicker 2.8s infinite; }
+@keyframes boltFlicker {
+  0%, 100% { opacity: 0.35; } 6% { opacity: 1; } 8% { opacity: 0.4; } 10% { opacity: 1; }
+  14% { opacity: 0.5; } 52% { opacity: 0.45; } 55% { opacity: 1; } 58% { opacity: 0.4; }
+}
+.storm-cloud { animation: cloudFlash 2.8s infinite; }
+@keyframes cloudFlash { 0%, 100% { filter: none; } 6%, 10%, 55% { filter: brightness(1.9) drop-shadow(0 0 10px #cfe6ff); } 8%, 14%, 58% { filter: none; } }
+.fire-trail { animation: plasma 0.9s ease-in-out infinite; }
+.flame-layer { transform-box: fill-box; transform-origin: 0% 100%; }
+.flame-layer.f1 { animation: flameLick 0.35s ease-in-out infinite alternate; }
+.flame-layer.f2 { animation: flameLick 0.25s ease-in-out infinite alternate-reverse; }
+.flame-layer.f3 { animation: flameLick 0.18s ease-in-out infinite alternate; }
+@keyframes flameLick { from { transform: scale(0.88, 0.95) skewX(-3deg); opacity: 0.85; } to { transform: scale(1.08, 1.05) skewX(3deg); opacity: 1; } }
+.board.zap-flash { animation: zapFlash 0.6s ease; }
+@keyframes zapFlash { 8% { filter: brightness(2.4) saturate(0.4); } 18% { filter: none; } 30% { filter: brightness(1.8) saturate(0.6); } 45% { filter: none; } }
+.token.electrified .chip { box-shadow: 0 0 18px 6px #7fb8ff, 0 0 40px 14px rgba(127, 184, 255, 0.5); filter: brightness(1.4) saturate(0.6); }
+.token.ablaze .chip { box-shadow: 0 0 22px 8px #ff6b35, 0 0 50px 18px rgba(255, 79, 0, 0.55); filter: sepia(0.5) saturate(2.2); }
+.token.ablaze::before {
+  content: ""; position: absolute; left: -25%; right: -25%; bottom: 30%; height: 150%; z-index: -1;
+  border-radius: 50% 50% 40% 40% / 70% 70% 30% 30%;
+  background: radial-gradient(ellipse at 50% 85%, #fff3c4 0 12%, #ffd166 25%, #ff6b35 50%, rgba(255, 46, 99, 0.5) 68%, transparent 75%);
+  transform-origin: 50% 100%; animation: flameLick 0.12s infinite alternate; filter: blur(1px);
+}
 @keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
 
 /* ---------------- Tokens ---------------- */

@@ -2,7 +2,7 @@
 const Board = (() => {
   // Every square that moves you: start -> { to, kind }
   //   UP:   rocket, ufo (tractor beam), wormhole, comet
-  //   DOWN: serpent, blackhole, asteroid, flare (solar flare)
+  //   DOWN: storm (ion storm lightning), blackhole, asteroid (flaming fireball), flare (solar flare)
   const JUMPS = {
     4: { to: 14, kind: "rocket" },
     9: { to: 31, kind: "ufo" },
@@ -12,17 +12,16 @@ const Board = (() => {
     36: { to: 57, kind: "comet" },
     51: { to: 67, kind: "ufo" },
     71: { to: 91, kind: "rocket" },
-    80: { to: 99, kind: "wormhole" },
 
-    17: { to: 7, kind: "serpent" },
+    17: { to: 7, kind: "storm" },
     48: { to: 26, kind: "flare" },
     54: { to: 34, kind: "asteroid" },
     62: { to: 19, kind: "blackhole" },
     64: { to: 45, kind: "flare" },
-    87: { to: 24, kind: "serpent" },
+    87: { to: 24, kind: "storm" },
     93: { to: 73, kind: "blackhole" },
     95: { to: 75, kind: "asteroid" },
-    98: { to: 79, kind: "serpent" },
+    98: { to: 79, kind: "storm" },
   };
 
   const KINDS = {
@@ -30,16 +29,12 @@ const Board = (() => {
     ufo:       { up: true,  icon: "🛸", name: "UFO beam",     title: "Tractor beam!",   verb: "was beamed up by a friendly UFO to" },
     wormhole:  { up: true,  icon: "🌀", name: "Wormhole",     title: "Wormhole warp!",  verb: "warped through a wormhole to" },
     comet:     { up: true,  icon: "☄️", name: "Comet ride",   title: "Comet ride!",     verb: "hitched a ride on a comet to" },
-    serpent:   { up: false, icon: "🐍", name: "Space serpent", title: "Space serpent!", verb: "got dragged by a space serpent to" },
+    storm:     { up: false, icon: "⚡", name: "Ion storm",    title: "Lightning strike!", verb: "was zapped by an ion storm down to" },
     blackhole: { up: false, icon: "🕳️", name: "Black hole",   title: "Black hole!",     verb: "fell into a black hole and came out at" },
-    asteroid:  { up: false, icon: "🪨", name: "Asteroid",     title: "Asteroid strike!", verb: "was knocked by an asteroid down to" },
+    asteroid:  { up: false, icon: "🔥", name: "Fireball asteroid", title: "Fireball strike!", verb: "was blasted by a flaming asteroid down to" },
     flare:     { up: false, icon: "☀️", name: "Solar flare",  title: "Solar flare!",    verb: "got blasted by a solar flare down to" },
   };
 
-  const SERPENT_COLORS = [
-    ["#ff4f9a", "#7b2ff7"], ["#00e5a8", "#006d77"], ["#ffb703", "#d00000"], ["#9b5de5", "#00bbf9"],
-    ["#f15bb5", "#fee440"], ["#4cc9f0", "#3a0ca3"], ["#80ffdb", "#5390d9"], ["#ff8500", "#7209b7"],
-  ];
   const ROCKET_COLORS = ["#ff4d6d", "#4cc9f0", "#ffd166", "#06d6a0", "#b388ff", "#ff9e00", "#00f5d4", "#f72585"];
 
   const NS = "http://www.w3.org/2000/svg";
@@ -179,10 +174,10 @@ const Board = (() => {
 
     const DRAW = {
       rocket: drawRocket, ufo: drawUfo, wormhole: drawWormhole, comet: drawComet,
-      serpent: drawSerpent, blackhole: drawBlackhole, asteroid: drawAsteroid, flare: drawFlare,
+      storm: drawStorm, blackhole: drawBlackhole, asteroid: drawAsteroid, flare: drawFlare,
     };
     // draw order: things that sit "under" first
-    const order = ["comet", "flare", "wormhole", "ufo", "rocket", "asteroid", "blackhole", "serpent"];
+    const order = ["comet", "flare", "wormhole", "ufo", "rocket", "storm", "asteroid", "blackhole"];
     const count = {};
     for (const kind of order) {
       const layer = el("g", { class: `layer-${kind}` }, svg);
@@ -323,30 +318,90 @@ const Board = (() => {
     el("circle", { r: 19, fill: "#000", stroke: "#ffe2b0", "stroke-width": 2 }, o);
   }
 
-  // ---------- Asteroid strike (down) ----------
+  // ---------- Flaming asteroid (down) ----------
   function drawAsteroid(layer, defs, from, to, i) {
     const a = cellXY(from), b = cellXY(to);
     const g = group(layer, "asteroid", from);
-    // ballistic arc: up and over, then down to the crater
+    // burning trail: up and over, then down to the crater
     const cx = (a.x + b.x) / 2 + (i % 2 ? 60 : -60), cy = Math.max(10, Math.min(a.y, b.y) - 90);
     const d = `M${a.x},${a.y} Q${cx},${cy} ${b.x},${b.y}`;
-    el("path", { d, fill: "none", stroke: "#ffb347", "stroke-width": 2.5, "stroke-dasharray": "8 8", opacity: 0.55, class: "flow" }, g);
+    const fire = grad(defs, `at${from}`, a, b, [["0", "#fff3c4"], ["0.25", "#ffb347"], ["0.65", "#ff4f00", 0.8], ["1", "#b5179e", 0.35]]);
+    el("path", { d, fill: "none", stroke: "#ff4f00", "stroke-width": 24, "stroke-linecap": "round", opacity: 0.22, filter: "url(#glow)", class: "fire-trail" }, g);
+    el("path", { d, fill: "none", stroke: fire, "stroke-width": 8, "stroke-linecap": "round", class: "fire-trail" }, g);
+    el("path", { d, fill: "none", stroke: "#fff6c9", "stroke-width": 2.5, "stroke-dasharray": "2 12", "stroke-linecap": "round", class: "flow", opacity: 0.85 }, g);
     guide(g, from, d);
-    // crater at landing square
-    el("ellipse", { cx: b.x, cy: b.y + 8, rx: 26, ry: 10, fill: "rgba(0,0,0,0.45)", stroke: "#ff9e00", "stroke-width": 2, opacity: 0.8 }, g);
-    // flaming rock incoming from the top-right of the start square
-    const r = prng(from * 7);
+    // scorched crater at landing square
+    el("ellipse", { cx: b.x, cy: b.y + 8, rx: 26, ry: 10, fill: "rgba(20,5,0,0.55)", stroke: "#ff6b35", "stroke-width": 2.5, class: "fire-trail" }, g);
+
+    // the fireball, its flames streaming up-right
     const o = el("g", { transform: `translate(${a.x + 4},${a.y - 4})`, class: "asteroid" }, g);
-    el("path", { d: "M-15,6 Q28,-38 72,-72 Q38,-28 6,15 Z", fill: grad(defs, `af${from}`, { x: a.x + 70, y: a.y - 70 }, { x: a.x, y: a.y }, [["0", "#ff4f00", 0], ["0.6", "#ff9e00", 0.7], ["1", "#fff3c4", 1]]), class: "asteroid-fire" }, o);
-    let pts = [];
+    const halo = el("radialGradient", { id: `ah${from}` }, defs);
+    el("stop", { offset: "0", "stop-color": "#ffd166", "stop-opacity": 0.9 }, halo);
+    el("stop", { offset: "0.5", "stop-color": "#ff4f00", "stop-opacity": 0.45 }, halo);
+    el("stop", { offset: "1", "stop-color": "#ff4f00", "stop-opacity": 0 }, halo);
+    el("circle", { r: 42, fill: `url(#ah${from})`, class: "sun-pulse" }, o);
+    const flame = (dd, stops, cls) => el("path", { d: dd, fill: grad(defs, `af${from}${cls}`, { x: a.x + 80, y: a.y - 80 }, { x: a.x, y: a.y }, stops), class: `flame-layer ${cls}` }, o);
+    flame("M-22,10 Q20,-40 92,-92 Q48,-26 10,22 Z", [["0", "#b5179e", 0], ["0.5", "#ff2e63", 0.6], ["1", "#ff4f00", 0.95]], "f1");
+    flame("M-17,7 Q22,-32 74,-74 Q38,-22 7,17 Z", [["0", "#ff4f00", 0], ["0.55", "#ff9e00", 0.85], ["1", "#ffd166", 1]], "f2");
+    flame("M-11,4 Q20,-22 52,-52 Q26,-16 4,11 Z", [["0", "#ffd166", 0], ["0.6", "#fff3c4", 0.9], ["1", "#ffffff", 1]], "f3");
+    const r = prng(from * 7);
+    const pts = [];
     for (let k = 0; k < 10; k++) {
-      const th = (k / 10) * Math.PI * 2, rr = 17 + r() * 8;
+      const th = (k / 10) * Math.PI * 2, rr = 14 + r() * 6;
       pts.push(`${(Math.cos(th) * rr).toFixed(1)},${(Math.sin(th) * rr).toFixed(1)}`);
     }
-    el("polygon", { points: pts.join(" "), fill: grad(defs, `ar${from}`, { x: a.x - 20, y: a.y - 20 }, { x: a.x + 20, y: a.y + 20 }, [["0", "#a7927e"], ["1", "#4a3a30"]]), stroke: "#2b211b", "stroke-width": 2 }, o);
-    el("circle", { cx: -6, cy: -4, r: 4, fill: "#3b2e26", opacity: 0.8 }, o);
-    el("circle", { cx: 6, cy: 6, r: 3, fill: "#3b2e26", opacity: 0.8 }, o);
-    el("circle", { cx: 7, cy: -7, r: 2, fill: "#3b2e26", opacity: 0.8 }, o);
+    const rg = el("radialGradient", { id: `ar${from}`, cx: "65%", cy: "35%" }, defs);
+    el("stop", { offset: "0", "stop-color": "#ffe1a8" }, rg);
+    el("stop", { offset: "0.35", "stop-color": "#ff7b2e" }, rg);
+    el("stop", { offset: "1", "stop-color": "#4a1c10" }, rg);
+    el("polygon", { points: pts.join(" "), fill: `url(#ar${from})`, stroke: "#ffb347", "stroke-width": 1.5 }, o);
+    el("circle", { cx: -5, cy: 3, r: 3.5, fill: "#5a2412", opacity: 0.8 }, o);
+    el("circle", { cx: -1, cy: -6, r: 2, fill: "#5a2412", opacity: 0.7 }, o);
+  }
+
+  // ---------- Ion storm lightning (down) ----------
+  function drawStorm(layer, defs, from, to, i) {
+    const a = cellXY(from), b = cellXY(to);
+    const g = group(layer, "storm", from);
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+    const nx = -dy / len, ny = dx / len;
+    const r = prng(from * 13);
+    const N = Math.max(6, Math.round(len / 55));
+    const pts = [];
+    for (let k = 0; k <= N; k++) {
+      const t = k / N;
+      const off = k === 0 || k === N ? 0 : (k % 2 ? 1 : -1) * (12 + r() * 20);
+      pts.push({ x: a.x + dx * t + nx * off, y: a.y + dy * t + ny * off });
+    }
+    const d = "M" + pts.map(q => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(" L");
+    const bolt = el("g", { class: "bolt-flicker", style: `animation-delay:${-i * 0.9}s` }, g);
+    el("path", { d, fill: "none", stroke: "#7fb8ff", "stroke-width": 18, "stroke-linejoin": "round", opacity: 0.3, filter: "url(#glow)" }, bolt);
+    el("path", { d, fill: "none", stroke: "#cfe6ff", "stroke-width": 6, "stroke-linejoin": "round", "stroke-linecap": "round" }, bolt);
+    el("path", { d, fill: "none", stroke: "#ffffff", "stroke-width": 2, "stroke-linejoin": "round" }, bolt);
+    // forks branching off the main bolt
+    for (const k of [Math.floor(N / 3), Math.floor((2 * N) / 3)]) {
+      const p0 = pts[k], side = k % 2 ? 1 : -1;
+      const f1 = { x: p0.x + nx * side * 30 + dx / N * 0.4, y: p0.y + ny * side * 30 + dy / N * 0.4 };
+      const f2 = { x: f1.x + nx * side * 12 + dx / N * 0.5, y: f1.y + ny * side * 12 + dy / N * 0.5 };
+      el("path", { d: `M${p0.x.toFixed(1)},${p0.y.toFixed(1)} L${f1.x.toFixed(1)},${f1.y.toFixed(1)} L${f2.x.toFixed(1)},${f2.y.toFixed(1)}`, fill: "none", stroke: "#cfe6ff", "stroke-width": 2.5, "stroke-linejoin": "round", opacity: 0.85 }, bolt);
+    }
+    guide(g, from, d);
+    // strike mark where you land
+    el("circle", { cx: b.x, cy: b.y, r: 20, fill: "none", stroke: "#7fb8ff", "stroke-width": 2.5, "stroke-dasharray": "3 5", opacity: 0.85, class: "pad-ring" }, g);
+    el("circle", { cx: b.x, cy: b.y, r: 5, fill: "#cfe6ff", opacity: 0.8 }, g);
+
+    // the storm cloud
+    const o = el("g", { transform: `translate(${a.x},${a.y - 6})`, class: "storm-cloud", style: `animation-delay:${-i * 0.9}s` }, g);
+    const cg = el("linearGradient", { id: `sc${from}`, x1: "0", y1: "0", x2: "0", y2: "1" }, defs);
+    el("stop", { offset: "0", "stop-color": "#8b7fd4" }, cg);
+    el("stop", { offset: "0.55", "stop-color": "#463a85" }, cg);
+    el("stop", { offset: "1", "stop-color": "#1d1640" }, cg);
+    const fill = `url(#sc${from})`;
+    el("ellipse", { cx: 0, cy: 8, rx: 36, ry: 13, fill }, o);
+    [[-20, 2, 14], [0, -8, 19], [19, 1, 15], [-8, 6, 13], [10, 7, 13]].forEach(([x, y, rr]) =>
+      el("circle", { cx: x, cy: y, r: rr, fill }, o));
+    el("ellipse", { cx: -4, cy: -14, rx: 12, ry: 5, fill: "#c9c1ff", opacity: 0.35 }, o);
+    el("path", { d: "M-4,14 L4,14 L-2,24 L6,24 L-6,40 L-1,27 L-8,27 Z", fill: "#fff6a8", stroke: "#ffd166", "stroke-width": 1 }, o);
   }
 
   // ---------- Solar flare (down) ----------
@@ -408,66 +463,6 @@ const Board = (() => {
     el("circle", { cx: 0, cy: -4, r: 5.5, fill: "#4fc3f7", stroke: "#1b2a4a", "stroke-width": 2 }, rocket);
     el("circle", { cx: -1.8, cy: -5.8, r: 1.6, fill: "#fff", opacity: 0.8 }, rocket);
     el("rect", { x: -1.5, y: 8, width: 3, height: 13, rx: 1.5, fill: color }, rocket);
-  }
-
-  function drawSerpent(layer, defs, head, tail, i) {
-    const a = cellXY(head), b = cellXY(tail);
-    const [c1, c2] = SERPENT_COLORS[i % SERPENT_COLORS.length];
-    const g = group(layer, "serpent", head);
-
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const len = Math.hypot(dx, dy);
-    const nx = -dy / len, ny = dx / len;
-    const waves = Math.max(1, Math.round(len / 230));
-    const amp = Math.min(55, 18 + len * 0.07);
-    const N = 40;
-    const pts = [];
-    for (let k = 0; k <= N; k++) {
-      const t = k / N;
-      const env = Math.sin(Math.PI * Math.min(1, t * 1.1));
-      const off = Math.sin(t * Math.PI * 2 * waves + (i % 2 ? Math.PI : 0)) * amp * env;
-      pts.push({ x: a.x + dx * t + nx * off, y: a.y + dy * t + ny * off });
-    }
-
-    // Tapered body polygon (thick at head, thin at tail)
-    const left = [], right = [];
-    for (let k = 0; k <= N; k++) {
-      const p = pts[k];
-      const q0 = pts[Math.max(0, k - 1)], q1 = pts[Math.min(N, k + 1)];
-      let tx = q1.x - q0.x, ty = q1.y - q0.y;
-      const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
-      const w = 15 * (1 - k / N) + 2.5;
-      left.push({ x: p.x - ty * w, y: p.y + tx * w });
-      right.push({ x: p.x + ty * w, y: p.y - tx * w });
-    }
-    const bodyPts = [...left, ...right.reverse()];
-
-    const gid = `sg${head}`;
-    const grad = el("linearGradient", { id: gid, gradientUnits: "userSpaceOnUse", x1: a.x, y1: a.y, x2: b.x, y2: b.y }, defs);
-    el("stop", { offset: "0", "stop-color": c1 }, grad);
-    el("stop", { offset: "1", "stop-color": c2 }, grad);
-
-    const centre = smoothPath(pts);
-    // soft glow under body
-    el("path", { d: centre, fill: "none", stroke: c1, "stroke-width": 26, "stroke-linecap": "round", opacity: 0.18, filter: "url(#glow)" }, g);
-    el("path", { d: smoothPath(bodyPts, true), fill: `url(#${gid})`, stroke: "rgba(0,0,0,0.35)", "stroke-width": 1.5 }, g);
-    // starry scale pattern along the spine
-    el("path", { d: centre, fill: "none", stroke: "rgba(255,255,255,0.55)", "stroke-width": 4, "stroke-dasharray": "2 14", "stroke-linecap": "round" }, g);
-    // centreline used to animate tokens sliding down
-    guide(g, head, centre);
-
-    // Head
-    const hx = pts[0].x, hy = pts[0].y;
-    const ang = (Math.atan2(pts[0].y - pts[2].y, pts[0].x - pts[2].x) * 180) / Math.PI;
-    const h = el("g", { transform: `translate(${hx.toFixed(1)},${hy.toFixed(1)}) rotate(${ang.toFixed(1)})` }, g);
-    el("path", { d: "M18,0 L32,-5 M18,0 L32,5", stroke: "#ff3366", "stroke-width": 2.5, "stroke-linecap": "round" }, h);
-    el("ellipse", { cx: 2, cy: 0, rx: 22, ry: 17, fill: c1, stroke: "rgba(0,0,0,0.4)", "stroke-width": 1.5 }, h);
-    el("ellipse", { cx: -2, cy: 0, rx: 14, ry: 10, fill: "rgba(255,255,255,0.15)" }, h);
-    for (const sy of [-8, 8]) {
-      el("circle", { cx: 8, cy: sy, r: 5.5, fill: "#fff" }, h);
-      el("ellipse", { class: "serpent-eye", cx: 9.5, cy: sy, rx: 2, ry: 4, fill: "#111" }, h);
-      el("circle", { cx: 10, cy: sy - 1.5, r: 1.2, fill: "#fff" }, h);
-    }
   }
 
   /** Point along the path of the jump starting at `from`; t in 0..1. */

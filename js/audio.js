@@ -90,16 +90,22 @@ const Sfx = (() => {
       tone(110, 1.3, { type: "sawtooth", vol: 0.05, to: 880 });
       noise(0.5, { vol: 0.2, freq: 120, q: 0.5, type: "lowpass" });
     },
-    serpent() {
-      tone(820, 1.1, { type: "triangle", vol: 0.1, to: 110 });
-      tone(860, 1.1, { type: "sine", vol: 0.05, to: 120, delay: 0.05 });
-      noise(0.9, { vol: 0.08, freq: 5000, to: 900, q: 3, type: "highpass" });
+    zap(power = 1) {
+      noise(0.5 * power, { vol: 0.45 * power, freq: 4000, to: 800, q: 0.6, type: "highpass" });
+      for (let i = 0; i < 5; i++) noise(0.05, { vol: 0.3 * power, freq: 2000 + Math.random() * 3000, q: 2, delay: i * 0.06 + Math.random() * 0.03 });
+      tone(1400, 0.35 * power, { type: "square", vol: 0.05 * power, to: 90 });
+      noise(1.2 * power, { vol: 0.25 * power, freq: 160, to: 50, q: 0.4, type: "lowpass", delay: 0.12 });
     },
     ufo() { for (let i = 0; i < 6; i++) tone(600 + (i % 2) * 250, 0.3, { type: "sine", vol: 0.07, to: 900 + (i % 2) * 300, delay: i * 0.28 }); },
     wormhole() { tone(120, 0.7, { type: "sine", vol: 0.12, to: 1800 }); tone(1800, 0.8, { type: "triangle", vol: 0.06, to: 200, delay: 0.7 }); },
     comet() { noise(1.3, { vol: 0.12, freq: 6000, to: 2000, q: 1, type: "highpass" }); [1318, 1568, 2093].forEach((f, i) => tone(f, 0.25, { vol: 0.05, delay: 0.2 + i * 0.25 })); },
     blackhole() { tone(260, 1.4, { type: "sawtooth", vol: 0.06, to: 35 }); noise(1.4, { vol: 0.15, freq: 900, to: 60, q: 0.5, type: "lowpass" }); },
-    asteroid() { noise(0.9, { vol: 0.5, freq: 900, to: 50, q: 0.4, type: "lowpass" }); tone(110, 0.6, { type: "square", vol: 0.08, to: 35 }); },
+    asteroid(power = 1) {
+      noise(1.1 * power, { vol: 0.3 * power, freq: 500, to: 2500, q: 0.5, attack: 0.08 });   // roaring flames
+      noise(0.9 * power, { vol: 0.5 * power, freq: 900, to: 50, q: 0.4, type: "lowpass", delay: 0.05 }); // impact boom
+      tone(110, 0.6 * power, { type: "square", vol: 0.07 * power, to: 35 });
+      for (let i = 0; i < 6; i++) noise(0.04, { vol: 0.12 * power, freq: 3000 + Math.random() * 3000, q: 3, delay: 0.2 + Math.random() * 0.8 }); // crackle
+    },
     flare() { noise(1.3, { vol: 0.2, freq: 3000, to: 400, q: 0.6 }); tone(500, 1.2, { type: "sawtooth", vol: 0.04, to: 120 }); },
     bump() { noise(0.25, { vol: 0.45, freq: 500, q: 0.6, type: "lowpass" }); tone(140, 0.25, { type: "square", vol: 0.08, to: 60 }); },
     pop() { tone(500, 0.12, { vol: 0.08, to: 1100 }); },

@@ -7,9 +7,9 @@ Square 100 is the **Andromeda Galaxy**. Land on it exactly to win. Overshoot it 
 ## Board elements
 | Boosts ▲ | Hazards ▼ |
 |---|---|
-| 🚀 Rocket: blast straight up | 🐍 Space serpent: slide down its body |
+| 🚀 Rocket: blast straight up | ⚡ Ion storm: zapped down a lightning bolt |
 | 🛸 UFO tractor beam: get beamed up | 🕳️ Black hole: spiral in, get spat out lower |
-| 🌀 Wormhole: warp between portals | 🪨 Asteroid strike: knocked flying down the board |
+| 🌀 Wormhole: warp between portals | 🔥 Flaming asteroid: set ablaze and blasted down the board |
 | ☄️ Comet ride: hitch a ride on its tail | ☀️ Solar flare: blasted down a plasma arc |
 
 ## Gameplay
@@ -21,7 +21,7 @@ Square 100 is the **Andromeda Galaxy**. Land on it exactly to win. Overshoot it 
 
 ## Presentation
 - **🎥 Cinematic camera:** zooms in on whose turn it is, pulls back for the dice throw, follows the piece as it hops, and frames the whole path when a boost or hazard fires. You can also zoom with the mouse wheel, pinch, `+`/`−` or the on-board buttons, drag to look around, and double-click (or press `0`) to reset. The 🎥 button turns the auto camera off.
-- **✨ Particles:** every element has ambient particles (rocket smoke and exhaust, rising UFO motes, swirling wormholes, black-hole accretion, comet ice, asteroid fire, solar embers, Andromeda glitter). Each interaction adds its own burst, trail and shockwave.
+- **✨ Particles:** every element has ambient particles (rocket smoke and exhaust, rising UFO motes, swirling wormholes, black-hole accretion, comet ice, storm sparks, fireball flames, solar embers, Andromeda glitter). Each interaction adds its own burst, trail and shockwave.
 - **🎵 Music & sound:** a generated space-ambient soundtrack that builds from calm pads to a driving groove in the final stretch, plus synthesized sound effects for every action. Music and sound effects can be toggled separately.
 - **🧪 Test mode** (setup screen toggle, or `index.html?test`): choose the next dice value and teleport the current player.
 

@@ -277,14 +277,17 @@
           Particles.addEmitter(b.x, b.y, 12, { ...F.ice, angle: back, spread: 0.8, speed: [20, 70], jitter: 8 });
           break;
         }
-        case "serpent":
-          Particles.addEmitter(a.x, a.y, 1.6, { ...F.pink, gravity: -20, speed: [5, 20], life: [1, 1.8], jitter: 15 });
+        case "storm":
+          Particles.addEmitter(a.x, a.y + 4, 7, { colors: ["#ffffff", "#cfe6ff", "#7fb8ff"], shape: "streak", speed: [80, 180], life: [0.12, 0.28], size: [2, 3], jitter: 26, drag: 0.9 });
+          Particles.addEmitter(a.x, a.y - 4, 2, { colors: ["#463a85", "#8b7fd4"], speed: [3, 10], life: [1.2, 2], size: [8, 12], grow: 1.8, alpha: 0.5, jitter: 20 });
           break;
         case "blackhole":
           Particles.addEmitter(a.x, a.y, 14, { ...F.dark, colors: ["#ffb347", "#ff7b54", "#c77dff"], jitter: 75, speed: [0, 10], attract: { x: a.x, y: a.y, k: 150 }, swirl: 240, life: [0.8, 1.6], size: [2, 4] });
           break;
         case "asteroid":
-          Particles.addEmitter(a.x + 30, a.y - 30, 12, { ...F.fire, angle: -Math.PI / 4, spread: 0.5, speed: [40, 100], jitter: 8 });
+          Particles.addEmitter(a.x + 10, a.y - 10, 32, { ...F.fire, angle: -Math.PI / 4, spread: 0.7, speed: [50, 130], size: [4, 10], jitter: 10 });
+          Particles.addEmitter(a.x + 20, a.y - 20, 6, { ...F.ember, angle: -Math.PI / 4, spread: 1, speed: [40, 110] });
+          Particles.addEmitter(a.x + 40, a.y - 40, 2, { ...F.smoke, vy: -10 });
           break;
         case "flare":
           Particles.addEmitter(a.x, a.y, 9, { ...F.ember, jitter: 18, speed: [20, 60] });
@@ -375,16 +378,26 @@
       Particles.emit(b.x, b.y, { ...F().ice, count: 45, speed: [60, 200] });
       Particles.ring(b.x, b.y, "#bdf3ff", 100);
     },
-    async serpent(p, from, to) {
-      Sfx.serpent();
-      const a = cell(from);
-      Particles.emit(a.x, a.y, { ...F().pink, count: 30, speed: [50, 140] });
-      const stop = Particles.trail(at(p), { ...F().pink, speed: [5, 30] }, 45);
-      await follow(p, from, 1.5, "power1.inOut",
-        t => { chip(p).style.transform = `rotate(${t * 720}deg) scale(${1 - Math.sin(Math.PI * t) * 0.3})`; });
+    async storm(p, from, to) {
+      const a = cell(from), b = cell(to);
+      const spark = { colors: ["#ffffff", "#cfe6ff", "#7fb8ff"], shape: "streak", life: [0.15, 0.4], size: [2, 4], drag: 0.9 };
+      Sfx.zap();
+      const board = $("#board");
+      board.classList.remove("zap-flash"); void board.offsetWidth; board.classList.add("zap-flash");
+      shake(9);
+      Particles.emit(a.x, a.y, { ...spark, count: 60, speed: [150, 400] });
+      Particles.ring(a.x, a.y, "#cfe6ff", 110, 0.4);
+      p.el.classList.add("electrified");
+      await sleep(250);
+      const stop = Particles.trail(at(p), { ...spark, speed: [60, 200] }, 140);
+      await follow(p, from, 0.75, "none", t => { chip(p).style.transform = `translate(${(Math.random() - 0.5) * 10}px, ${(Math.random() - 0.5) * 10}px)`; });
       stop();
-      const b = cell(to);
-      Particles.emit(b.x, b.y, { ...F().pink, count: 25, speed: [40, 120] });
+      Sfx.zap(0.6);
+      Particles.emit(b.x, b.y, { ...spark, count: 50, speed: [120, 320] });
+      Particles.ring(b.x, b.y, "#7fb8ff", 100, 0.5);
+      await sleep(300);
+      p.el.classList.remove("electrified");
+      chip(p).style.transform = "";
     },
     async blackhole(p, from, to) {
       Sfx.blackhole();
@@ -408,17 +421,27 @@
     async asteroid(p, from, to) {
       Sfx.asteroid();
       shake(12);
-      const a = cell(from);
-      Particles.emit(a.x, a.y, { ...F().fire, count: 60, speed: [100, 300] });
-      Particles.emit(a.x, a.y, { colors: ["#a7927e", "#6b5a4c"], count: 25, speed: [80, 220], size: [3, 7], gravity: 300, life: [0.6, 1.1] });
-      Particles.ring(a.x, a.y, "#ff9e00", 130);
-      const stop = Particles.trail(at(p), { ...F().fire, speed: [10, 40] }, 60);
-      await follow(p, from, 1.2, "power1.in", t => { chip(p).style.transform = `rotate(${t * 1080}deg)`; });
-      stop();
-      shake(7);
-      const b = cell(to);
-      Particles.emit(b.x, b.y, { colors: ["#a7927e", "#6b5a4c", "#ff9e00"], count: 35, speed: [60, 180], gravity: 260, life: [0.5, 1], size: [3, 6] });
-      Particles.ring(b.x, b.y, "#ffb347", 90);
+      const a = cell(from), b = cell(to);
+      // the fireball slams in: a column of flame and a fiery shockwave
+      Particles.emit(a.x, a.y, { ...F().fire, count: 90, speed: [100, 340], size: [5, 12] });
+      Particles.emit(a.x, a.y, { ...F().fire, count: 40, angle: -Math.PI / 2, spread: 0.8, speed: [150, 320], size: [6, 12], life: [0.5, 0.9] });
+      Particles.emit(a.x, a.y, { ...F().ember, count: 40, speed: [120, 300] });
+      Particles.ring(a.x, a.y, "#ff6b35", 140);
+      Particles.ring(a.x, a.y, "#ffd166", 90, 0.4);
+      p.el.classList.add("ablaze");
+      const stop = Particles.trail(at(p), { ...F().fire, speed: [20, 80], size: [6, 12], life: [0.35, 0.7] }, 150);
+      const stop2 = Particles.trail(at(p), { ...F().ember, speed: [40, 120] }, 30);
+      const stop3 = Particles.trail(at(p), { ...F().smoke, life: [0.8, 1.5] }, 14);
+      await follow(p, from, 1.25, "power1.in", t => { chip(p).style.transform = `rotate(${t * 720}deg)`; });
+      stop(); stop2(); stop3();
+      shake(8);
+      Sfx.asteroid(0.6);
+      Particles.emit(b.x, b.y, { ...F().fire, count: 70, speed: [80, 260], size: [5, 11] });
+      Particles.emit(b.x, b.y, { ...F().ember, count: 30, speed: [100, 260] });
+      Particles.emit(b.x, b.y, { ...F().smoke, count: 12, speed: [20, 60], spread: Math.PI * 2 });
+      Particles.ring(b.x, b.y, "#ff9e00", 110);
+      await sleep(350);
+      p.el.classList.remove("ablaze");
     },
     async flare(p, from, to) {
       Sfx.flare();
