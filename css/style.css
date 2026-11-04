@@ -495,10 +495,9 @@ kbd { font-family: var(--font-body); font-size: 0.75em; padding: 1px 6px; border
 
 /* ---------------- Turn banner (on board) ---------------- */
 .turn-banner {
-  position: absolute; left: 50%; bottom: 16px; z-index: 39; pointer-events: none; opacity: 0;
-  transform: translateX(-50%);
+  position: absolute; z-index: 39; pointer-events: none; opacity: 0;
   display: flex; align-items: center; gap: 14px; padding: 10px 24px 10px 12px; border-radius: 999px;
-  width: max-content; max-width: calc(100% - 110px);
+  width: max-content; max-width: min(48%, 420px);
   background: linear-gradient(90deg, color-mix(in srgb, var(--pc, #7c5cff) 45%, rgba(8,10,30,0.92)), rgba(8, 10, 30, 0.9));
   border: 2px solid var(--pc, #7c5cff);
   box-shadow: 0 0 30px color-mix(in srgb, var(--pc, #7c5cff) 55%, transparent), 0 10px 30px rgba(0,0,0,0.5);
@@ -578,4 +577,12 @@ kbd { font-family: var(--font-body); font-size: 0.75em; padding: 1px 6px; border
 @media (max-width: 520px) {
   .podium-row { grid-template-columns: 40px auto 1fr; }
   .pr-detail { grid-column: 2 / -1; text-align: left; }
+}
+
+.turn-banner.tl { top: 14px; left: 14px; transform-origin: top left; }
+.turn-banner.tr { top: 14px; right: 14px; transform-origin: top right; }
+.turn-banner.bl { bottom: 14px; left: 14px; transform-origin: bottom left; }
+.turn-banner.br { bottom: 14px; right: 58px; transform-origin: bottom right; } /* clear of the zoom buttons */
+@media (max-width: 520px) {
+  .turn-banner { padding: 6px 14px 6px 8px; gap: 8px; max-width: 56%; }
 }

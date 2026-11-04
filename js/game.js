@@ -503,6 +503,12 @@
     bannerId++;
     bannerShownAt = performance.now();
     el.style.setProperty("--pc", p.color);
+    // put the banner in the board corner furthest from this player's piece so it never covers it
+    const { x, y } = cell(p.pos);
+    const corners = { tl: [0, 0], tr: [1000, 0], bl: [0, 1000], br: [1000, 1000] };
+    const corner = Object.keys(corners).sort((a, b) =>
+      Math.hypot(corners[b][0] - x, corners[b][1] - y) - Math.hypot(corners[a][0] - x, corners[a][1] - y))[0];
+    el.className = `turn-banner ${corner}`;
     el.innerHTML = `
       <div class="tb-badge">${p.emoji}</div>
       <div class="tb-text">
@@ -510,7 +516,8 @@
         <div class="tb-name">${escapeHtml(p.name)}</div>
       </div>`;
     gsap.killTweensOf(el);
-    gsap.fromTo(el, { opacity: 0, y: 30, scale: 0.85, xPercent: -50 }, { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "back.out(2)" });
+    const fromY = corner[0] === "t" ? -30 : 30;
+    gsap.fromTo(el, { opacity: 0, y: fromY, scale: 0.85 }, { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "back.out(2)" });
   }
   /** Fade the banner once the dice is thrown, but never before it has shown for 800 ms. */
   async function dimTurnBanner(now = false) {
@@ -520,7 +527,7 @@
     if (id !== bannerId) return; // a newer banner replaced this one
     const el = $("#turn-banner");
     gsap.killTweensOf(el);
-    gsap.to(el, { opacity: 0, y: 20, scale: 0.92, duration: now ? 0.2 : 0.5, ease: "power2.in" });
+    gsap.to(el, { opacity: 0, y: el.classList.contains("tl") || el.classList.contains("tr") ? -20 : 20, scale: 0.92, duration: now ? 0.2 : 0.5, ease: "power2.in" });
   }
 
   // ---------- hold to throw: charge a power meter, release to throw ----------
