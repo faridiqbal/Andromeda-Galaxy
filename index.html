@@ -7,7 +7,7 @@
   <meta name="description" content="A space-themed rockets & hazards board game for up to 5 players. Race from Earth to the Andromeda Galaxy!" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Exo+2:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Exo+2:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -66,6 +66,18 @@
   <!-- ============ GAME SCREEN ============ -->
   <section id="game" class="screen">
     <div class="board-area">
+      <!-- Mission Control terminal: current status + event notifications (kept off the board) -->
+      <div id="terminal" class="terminal" aria-label="Mission control">
+        <div class="term-bar">
+          <span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="term-title">MISSION CONTROL <span class="term-dim">// ANDROMEDA-NET</span></span>
+          <span id="term-meta" class="term-meta"></span>
+        </div>
+        <div class="term-screen">
+          <div id="term-status" class="term-status" aria-live="polite"></div>
+          <div id="toast" class="toast" role="status" aria-live="polite"></div>
+        </div>
+      </div>
       <div id="board-wrap" class="board-wrap">
         <div id="board" class="board">
           <div id="camera" class="camera">
@@ -82,7 +94,6 @@
             <button id="cam-auto" class="cam-btn" title="Cinematic camera: on" aria-label="Toggle cinematic camera">🎥</button>
           </div>
           <div id="dice-stage" class="dice-stage" aria-hidden="true"></div>
-          <div id="toast" class="toast" role="status" aria-live="polite"></div>
           <div id="tip" class="tip" role="tooltip"></div>
         </div>
       </div>

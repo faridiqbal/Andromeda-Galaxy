@@ -26,6 +26,7 @@ Every game deals a **random board of 14 elements: 7 boosts and 7 hazards**. Ever
 - **🤖 CPU pilots:** any seat can be a computer player.
 
 ## Presentation
+- **🖥️ Mission Control terminal** above the board: a typed status line (whose turn, dice in flight, course set, events) plus the round and next-event countdown. All event notifications appear here, so nothing covers the board.
 - **🎥 Cinematic camera:** zooms in on whose turn it is, pulls back for the dice throw, follows the piece as it hops, and frames the whole path when a boost or hazard fires. You can also zoom with the mouse wheel, pinch, `+`/`−` or the on-board buttons, drag to look around, and double-click (or press `0`) to reset. The 🎥 button turns the auto camera off.
 - **✨ Particles:** every element has ambient particles (rocket smoke and exhaust, rising UFO motes, swirling wormholes, black-hole accretion, comet ice, storm sparks, fireball flames, solar embers, Andromeda glitter). Each interaction adds its own burst, trail and shockwave.
 - **🎵 Music & sound:** a generated space-ambient soundtrack that builds from calm pads to a driving groove in the final stretch, plus synthesized sound effects for every action. Music and sound effects can be toggled separately.

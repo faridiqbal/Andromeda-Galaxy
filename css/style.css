@@ -166,9 +166,12 @@ kbd { font-family: var(--font-body); font-size: 0.75em; padding: 1px 6px; border
 #game {
   min-height: 100vh; gap: 20px; padding: 20px; align-items: flex-start; justify-content: center;
 }
-.board-area { flex: 0 1 auto; }
+.board-area {
+  --term-h: 150px; /* terminal above the board */
+  --size: min(calc(100vh - 52px - var(--term-h)), calc(100vw - 420px));
+  flex: 0 1 auto; display: flex; flex-direction: column; gap: 12px; width: var(--size);
+}
 .board-wrap {
-  --size: min(calc(100vh - 40px), calc(100vw - 420px));
   width: var(--size); height: var(--size);
   padding: 10px; border-radius: 22px;
   background: linear-gradient(135deg, rgba(124,92,255,0.6), rgba(54,209,255,0.4), rgba(255,93,143,0.5));
@@ -360,9 +363,9 @@ kbd { font-family: var(--font-body); font-size: 0.75em; padding: 1px 6px; border
 
 /* ---------------- Toast ---------------- */
 .toast {
-  position: absolute; left: 50%; top: 12px; transform: translate(-50%, 0);
-  z-index: 40; pointer-events: none; opacity: 0; text-align: center;
-  padding: 12px 26px 14px; border-radius: 18px; width: max-content; max-width: calc(100% - 24px);
+  position: absolute; inset: 8px; z-index: 2; pointer-events: none; opacity: 0; text-align: center;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  padding: 8px 20px; border-radius: 14px; overflow: hidden;
   background: rgba(8, 10, 30, 0.9); border: 2px solid var(--glass-border);
   box-shadow: 0 10px 40px rgba(0,0,0,0.6);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
@@ -479,7 +482,8 @@ kbd { font-family: var(--font-body); font-size: 0.75em; padding: 1px 6px; border
 /* ---------------- Responsive ---------------- */
 @media (max-width: 900px) {
   #game { flex-direction: column; align-items: center; padding: 16px; gap: 16px; }
-  .board-wrap { --size: min(calc(100vw - 32px), 78vh); padding: 6px; }
+  .board-area { --size: min(calc(100vw - 32px), 72vh); }
+  .board-wrap { padding: 6px; }
   .panel { width: 100%; flex: none; max-width: 640px; position: static; max-height: none; }
   .log { max-height: 180px; }
 }
@@ -556,4 +560,47 @@ kbd { font-family: var(--font-body); font-size: 0.75em; padding: 1px 6px; border
 @media (max-width: 520px) {
   .podium-row { grid-template-columns: 40px auto 1fr; }
   .pr-detail { grid-column: 2 / -1; text-align: left; }
+}
+
+/* ---------------- Mission Control terminal ---------------- */
+.terminal {
+  container-type: inline-size; position: relative; border-radius: 16px; overflow: hidden;
+  background: linear-gradient(180deg, rgba(10, 16, 40, 0.95), rgba(4, 8, 22, 0.97));
+  border: 1px solid rgba(124, 92, 255, 0.45);
+  box-shadow: 0 0 30px rgba(124, 92, 255, 0.25), inset 0 0 40px rgba(54, 209, 255, 0.06);
+}
+.term-bar {
+  display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-family: "Share Tech Mono", ui-monospace, monospace;
+  font-size: 12px; letter-spacing: 0.12em; color: #9fe8ff; background: rgba(124, 92, 255, 0.12);
+  border-bottom: 1px solid rgba(124, 92, 255, 0.3);
+}
+.term-dots { display: inline-flex; gap: 5px; }
+.term-dots i { width: 9px; height: 9px; border-radius: 50%; background: #ff5d73; }
+.term-dots i:nth-child(2) { background: #ffd166; } .term-dots i:nth-child(3) { background: #3ee08f; }
+.term-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.term-dim { color: rgba(159, 232, 255, 0.45); }
+.term-meta { margin-left: auto; white-space: nowrap; color: #ffd166; }
+.term-screen { position: relative; height: clamp(92px, 13cqw, 116px); }
+/* faint CRT scanlines */
+.term-screen::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 3;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 3px);
+}
+.term-status {
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 0 18px;
+  font-family: "Share Tech Mono", ui-monospace, monospace; color: #9fe8ff; text-shadow: 0 0 8px rgba(54, 209, 255, 0.55);
+  font-size: clamp(14px, 2.4cqw, 22px); transition: opacity 0.2s;
+}
+.term-status .ts-main { color: #d6f6ff; }
+.term-status .ts-sub { font-size: 0.72em; color: rgba(159, 232, 255, 0.7); }
+.term-status .ts-prompt { color: #3ee08f; margin-right: 8px; }
+.term-cursor { display: inline-block; width: 0.55em; height: 1em; margin-left: 4px; vertical-align: -0.12em; background: #9fe8ff; animation: termBlink 1s steps(1) infinite; }
+@keyframes termBlink { 50% { opacity: 0; } }
+.terminal.alert .term-status { opacity: 0.12; }
+.toast-title { font-size: clamp(16px, 3.4cqw, 32px); }
+.toast-sub { font-size: clamp(13px, 2.2cqw, 20px); margin-top: 4px; }
+@media (max-width: 520px) {
+  .term-dim { display: none; }
+  .term-bar { font-size: 10px; gap: 6px; letter-spacing: 0.04em; padding: 6px 10px; }
+  .term-dots i { width: 7px; height: 7px; }
 }

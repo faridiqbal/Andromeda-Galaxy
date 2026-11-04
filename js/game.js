@@ -170,6 +170,7 @@
     Camera.reset();
     requestAnimationFrame(() => Dice3D.resize());
     log(`Mission start! All crews launch from Earth. ${players[0].name} goes first.`);
+    setStatus("LINK ESTABLISHED · ALL CREWS ON THE LAUNCH PAD", `${players.length} ship${players.length > 1 ? "s" : ""} ready for launch`);
     // launch fanfare: particles off Earth
     const e = cell(1);
     Particles.ring(e.x, e.y, "#36d1ff", 120, 0.9);
@@ -479,6 +480,9 @@
     layoutTokens();
     updatePanel();
     if (!extraRoll) Sfx.turn();
+    setMeta();
+    setStatus(`${extraRoll ? "AFTERBURNER: " : ""}${p.name.toUpperCase()} · ${p.cpu ? "CPU PILOT PREPARING THROW" : "AWAITING THROW"}`,
+      `${p.emoji} Square ${p.pos} · ${GOAL - p.pos} to Andromeda${p.cpu ? "" : " · hold the button or Space to throw"}`);
     Particles.ring(p.x, p.y, p.color, 70, 0.8);
     // cinematic swoop: zoom in on whose turn it is, then pull back for the dice
     Camera.focus(p.x, p.y, 2.1);
@@ -501,6 +505,7 @@
     if (phase !== "roll" || !players.length || cur().cpu || charge) return;
     Sfx.unlock();
     charge = { t0: performance.now(), step: -1, raf: 0 };
+    setStatus("CHARGING THROW…", "Release to throw. Longer hold = harder throw");
     const rb = $("#roll-btn");
     rb.classList.add("charging");
     const loop = () => {
@@ -544,6 +549,7 @@
     const res = $("#dice-result");
     res.textContent = "…";
     Sfx.whoosh(power);
+    setStatus(`DICE IN FLIGHT · POWER ${Math.round(power * 100)}%`, `${p.emoji} ${escapeHtml(p.name)}`);
     p.stats.rolls++;
     p.stats.pips += value;
     if (value === 6) p.stats.sixes++;
@@ -585,6 +591,8 @@
     // preview where we're heading
     const j = Board.JUMPS[final];
     showGhost(final, final === GOAL ? "win" : j ? (Board.KINDS[j.kind].up ? "up" : "down") : "plain");
+    setStatus(`${p.name.toUpperCase()} ROLLED ${value} · COURSE SET FOR SQUARE ${final}`,
+      final === GOAL ? "Andromeda Galaxy in range!" : j ? `${Board.KINDS[j.kind].icon} ${Board.KINDS[j.kind].name} detected at the destination` : "Clear space ahead");
     Camera.follow(at(p), 2);
 
     p.el.classList.add("moving");
@@ -773,6 +781,7 @@
       Particles.emit(Math.random() * 1000, -20, { colors: ["#e0c3ff", "#ffffff", "#7fe7ff"], count: 1, angle: Math.PI * 0.62, spread: 0.1, speed: [500, 800], life: [1.2, 1.8], shape: "streak", size: [3, 5], drag: 1 });
     }
     log(`🌌 Cosmic event: ${ev.title}! ${ev.text}.`);
+    setStatus(`COSMIC EVENT: ${ev.title.toUpperCase()}`, ev.text);
     toast(`🌌 Cosmic event: ${ev.icon} ${ev.title}`, ev.text, "event", { hold: 3 });
     await windUp(500, 500, "#c77dff");
     await sleep(700);
@@ -878,6 +887,7 @@
     refreshControls();
     updatePanel();
     log(`${MEDALS[p.place - 1] || "🏁"} ${p.name} reached the Andromeda Galaxy in ${ordinal(p.place)} place (round ${round})!`, p.color);
+    setStatus(`${p.name.toUpperCase()} HAS REACHED ANDROMEDA · ${ordinal(p.place).toUpperCase()} PLACE`, `${MEDALS[p.place - 1] || "🏁"} Round ${round}`);
     const g = cell(GOAL);
     Camera.focus(g.x, g.y, 3);
     Music.duck(4);
@@ -935,6 +945,8 @@
     layoutTokens();
     updatePanel();
     Music.setIntensity(0);
+    setMeta();
+    setStatus("MISSION COMPLETE · ALL SHIPS ACCOUNTED FOR", "Results transmitted");
     showResults();
   }
 
@@ -1046,17 +1058,43 @@
     while (ol.children.length > 60) ol.lastChild.remove();
   }
 
-  /** Result banner at the top of the board. Stays ~2.6 s so it can be read. */
+  let toastId = 0;
+
+  // ---------- terminal status line (typed out, with a blinking cursor) ----------
+  let statusTimer = 0;
+  function setStatus(main, sub = "") {
+    const el = $("#term-status");
+    clearInterval(statusTimer);
+    el.innerHTML = `<div class="ts-main"><span class="ts-prompt">&gt;</span><span class="ts-text"></span><span class="term-cursor"></span></div>${sub ? `<div class="ts-sub">${sub}</div>` : ""}`;
+    const out = el.querySelector(".ts-text");
+    const chars = [...main];
+    let i = 0;
+    statusTimer = setInterval(() => {
+      out.textContent = chars.slice(0, ++i).join("");
+      if (i >= chars.length) clearInterval(statusTimer);
+    }, 16);
+  }
+  function setMeta() {
+    if (!players.length) return;
+    const nextEvent = EVENT_EVERY - ((round - 1) % EVENT_EVERY);
+    const racing = active().length;
+    $("#term-meta").textContent = `RND ${String(round).padStart(2, "0")} · EVENT T-${nextEvent} · ${racing} SHIP${racing > 1 ? "S" : ""}`;
+  }
+
+  /** Event notification, shown in the Mission Control terminal. Stays ~2.6 s so it can be read. */
   function toast(title, sub, kind, { hold = 2.6 } = {}) {
     const t = $("#toast");
     t.className = `toast ${kind || ""}`;
     t.innerHTML = `<div class="toast-title">${title}</div>${sub ? `<div class="toast-sub">${sub}</div>` : ""}`;
     gsap.killTweensOf(t);
+    const term = $("#terminal");
+    term.classList.add("alert");
+    const id = ++toastId;
     return new Promise(res => {
-      gsap.timeline({ onComplete: res })
-        .fromTo(t, { opacity: 0, scale: 0.8, xPercent: -50, yPercent: 0, y: -24 },
+      gsap.timeline({ onComplete: () => { if (id === toastId) term.classList.remove("alert"); res(); } })
+        .fromTo(t, { opacity: 0, scale: 0.9, y: -14 },
           { opacity: 1, scale: 1, y: 0, duration: 0.4, ease: "back.out(2)" })
-        .to(t, { opacity: 0, y: -16, duration: 0.35, delay: hold });
+        .to(t, { opacity: 0, y: -10, duration: 0.35, delay: hold });
     });
   }
 
