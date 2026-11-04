@@ -495,7 +495,8 @@ kbd { font-family: var(--font-body); font-size: 0.75em; padding: 1px 6px; border
 
 /* ---------------- Turn banner (on board) ---------------- */
 .turn-banner {
-  position: absolute; z-index: 39; pointer-events: none; opacity: 0;
+  position: absolute; z-index: 39; pointer-events: auto; cursor: pointer; opacity: 0;
+  transition: filter 0.25s ease, backdrop-filter 0.25s ease;
   display: flex; align-items: center; gap: 14px; padding: 10px 24px 10px 12px; border-radius: 999px;
   width: max-content; max-width: min(48%, 420px);
   background: linear-gradient(90deg, color-mix(in srgb, var(--pc, #7c5cff) 45%, rgba(8,10,30,0.92)), rgba(8, 10, 30, 0.9));
@@ -586,3 +587,7 @@ kbd { font-family: var(--font-body); font-size: 0.75em; padding: 1px 6px; border
 @media (max-width: 520px) {
   .turn-banner { padding: 6px 14px 6px 8px; gap: 8px; max-width: 56%; }
 }
+
+.turn-banner.gone { pointer-events: none; }
+.turn-banner.peek { filter: opacity(0.14); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.turn-banner.pinned { filter: opacity(0.22); outline: 2px dashed rgba(255,255,255,0.5); outline-offset: 3px; }

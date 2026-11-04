@@ -526,6 +526,7 @@
     if (!now && left > 0) await sleep(left);
     if (id !== bannerId) return; // a newer banner replaced this one
     const el = $("#turn-banner");
+    el.classList.add("gone"); // faded banners shouldn't catch the mouse
     gsap.killTweensOf(el);
     gsap.to(el, { opacity: 0, y: el.classList.contains("tl") || el.classList.contains("tr") ? -20 : 20, scale: 0.92, duration: now ? 0.2 : 0.5, ease: "power2.in" });
   }
@@ -1225,6 +1226,19 @@
     renderLegend();
     renderTestDice();
     setupPreview();
+
+    // turn banner: hover (mouse) to see through it; click / tap to keep it see-through
+    const tb = $("#turn-banner");
+    tb.addEventListener("pointerenter", e => { if (e.pointerType === "mouse") tb.classList.add("peek"); });
+    tb.addEventListener("pointerleave", e => { if (e.pointerType === "mouse" && !tb.classList.contains("pinned")) tb.classList.remove("peek"); });
+    tb.addEventListener("click", e => {
+      e.stopPropagation();
+      const pin = !tb.classList.contains("pinned");
+      tb.classList.toggle("pinned", pin);
+      tb.classList.toggle("peek", pin || (e.pointerType === "mouse" && tb.matches(":hover")));
+    });
+    // keep taps on the banner from dragging the camera or opening element previews
+    ["pointerdown", "pointerup", "pointermove"].forEach(t => tb.addEventListener(t, e => e.stopPropagation()));
 
     const tt = $("#test-toggle");
     tt.checked = testMode;
