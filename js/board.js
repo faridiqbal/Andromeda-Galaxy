@@ -25,8 +25,10 @@ const Board = (() => {
   };
 
   // How many of each element a board has (the layout itself is randomised every game)
-  const COUNTS = {};
-  for (const j of Object.values(JUMPS)) COUNTS[j.kind] = (COUNTS[j.kind] || 0) + 1;
+  // How many of each element the current board has. Re-picked at random for every layout:
+  // 6 boosts and 6 hazards, every kind at least once, the 2 extra of each side random.
+  const PER_SIDE = 6;
+  let COUNTS = {};
 
   // How far each kind moves you, in squares [min, max]
   const REACH = {
@@ -83,7 +85,17 @@ const Board = (() => {
    *  - every element moves you to a different row, and starts aren't packed side by side
    *  - `avoid` squares (e.g. where pieces stand) never get an element start
    */
-  function generateLayout(avoid = []) {
+  function pickCounts() {
+    const counts = {};
+    for (const up of [true, false]) {
+      const kinds = Object.keys(KINDS).filter(k => KINDS[k].up === up);
+      kinds.forEach(k => (counts[k] = 1));
+      for (let i = kinds.length; i < PER_SIDE; i++) counts[kinds[Math.floor(Math.random() * kinds.length)]]++;
+    }
+    return counts;
+  }
+
+  function generateLayout(avoid = [], COUNTS = pickCounts()) {
     const kinds = Object.keys(COUNTS).sort((a, b) => REACH[b][1] - REACH[a][1]);
     for (let attempt = 0; attempt < 3000; attempt++) {
       const used = new Set([1, 100]);
@@ -120,9 +132,9 @@ const Board = (() => {
             if (starts.has(from - 1) || starts.has(from + 1)) continue;
             if (rowOf(from) === rowOf(to)) continue;
             if (perRow[rowOf(from)] >= MAX_PER_ROW || perRow[rowOf(to)] >= MAX_PER_ROW) continue;
-            // the board is tight (34 squares in 40 row slots): prefer quieter rows
+            // prefer quieter rows so the limit is easy to meet
             const load = perRow[rowOf(from)] + perRow[rowOf(to)];
-            if (load > 4 && Math.random() < 0.6) continue;
+            if (load > 3 && Math.random() < 0.6) continue;
             out[from] = { to, kind };
             used.add(from); used.add(to); starts.add(from);
             perRow[rowOf(from)]++; perRow[rowOf(to)]++;
@@ -139,13 +151,13 @@ const Board = (() => {
 
   /**
    * Fairness: each third of the board (2–33, 34–66, 67–99) gets at least 2 boosts and
-   * 2 hazards, and no third is overloaded with more than 4 hazards or 4 boosts.
+   * 2 hazards (with 6 of each, that's exactly 2 + 2 per third).
    * There is also always at least one hazard starting on squares 95–99, and no board row
-   * holds more than 4 element squares (starts and destinations together).
+   * holds more than 3 element squares (starts and destinations together).
    */
   const BANDS = [[2, 33], [34, 66], [67, 99]];
   const FINAL_GUARD = [95, 96, 97, 98, 99];
-  const MAX_PER_ROW = 4; // element squares per row, counting starts and destinations
+  const MAX_PER_ROW = 3; // element squares per row, counting starts and destinations
   function isBalanced(layout) {
     const guarded = FINAL_GUARD.some(n => layout[n] && !KINDS[layout[n].kind].up);
     const perRow = Array(10).fill(0);
@@ -157,7 +169,7 @@ const Board = (() => {
         if (+f < lo || +f > hi) continue;
         KINDS[j.kind].up ? up++ : down++;
       }
-      return up >= 2 && down >= 2 && up <= 4 && down <= 4;
+      return up >= 2 && down >= 2;
     });
   }
 
@@ -177,8 +189,11 @@ const Board = (() => {
 
   /** Replace the layout with a fresh random one (same counts), and redraw. */
   function randomize(avoid = []) {
-    const next = generateLayout(avoid);
+    // try a few random mixes in case one is awkward to place
+    let next = null, counts = null;
+    for (let i = 0; i < 6 && !next; i++) { counts = pickCounts(); next = generateLayout(avoid, counts); }
     if (!next) return false;
+    COUNTS = counts;
     for (const k of Object.keys(JUMPS)) delete JUMPS[k];
     Object.assign(JUMPS, next);
     applyLayout();
@@ -613,5 +628,5 @@ const Board = (() => {
     return { x: pt.x, y: pt.y };
   }
 
-  return { jumpEls, JUMPS, KINDS, COUNTS, BANDS, cellXY, cellAt, jumpAt, isBalanced, build, pathPoint, randomize, svg: () => svgRoot };
+  return { get COUNTS() { return COUNTS; }, jumpEls, JUMPS, KINDS, BANDS, cellXY, cellAt, jumpAt, isBalanced, build, pathPoint, randomize, svg: () => svgRoot };
 })();

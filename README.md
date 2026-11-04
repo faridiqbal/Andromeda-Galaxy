@@ -5,7 +5,7 @@ A space-themed take on snakes & ladders for 1–5 players, built with plain HTML
 Square 100 is the **Andromeda Galaxy**. Land on it exactly to win. Overshoot it and you bounce back for the remaining pips (97 + 6 → 98, 99, 100, 99, 98, **97**).
 
 ## Board elements
-Every game deals a **random layout** with the same number of each element (3 rockets, 2 UFO beams, 2 comets, 1 wormhole, 3 ion storms, 2 black holes, 2 fireball asteroids, 2 solar flares). Boards are also **balanced**: each third of the board (2–33, 34–66, 67–99) has 2–4 boosts and 2–4 hazards, and there is **always a hazard starting on squares 95–99** guarding the finish (also after a Galactic Shift), and **no board row has more than 4 element squares** (starts and destinations counted together). The layout always follows the rules: boosts go up and hazards go down, nothing starts or ends on 1 or 100, no square holds more than one start or end (so elements never chain), and each element moves you at least one row.
+Every game deals a **random board of 12 elements: 6 boosts and 6 hazards**. Every kind appears at least once and the extra 2 boosts and 2 hazards are picked at random, so the mix changes from game to game (and on a Galactic Shift). Each third of the board (2–33, 34–66, 67–99) gets exactly 2 boosts and 2 hazards, there is always a hazard starting on squares 95–99, and no board row holds more than 3 element squares (starts and destinations counted together). The layout always follows the rules: boosts go up and hazards go down, nothing starts or ends on 1 or 100, no square holds more than one start or end (so elements never chain), and each element moves you at least one row.
 
 | Boosts ▲ | Hazards ▼ |
 |---|---|
