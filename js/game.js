@@ -272,8 +272,9 @@
       switch (j.kind) {
         case "rocket": {
           Particles.addEmitter(a.x, a.y, 1.8, F.smoke);
-          const rx = a.x + (b.x - a.x) * 0.86 - Math.cos(ang) * 38, ry = a.y + (b.y - a.y) * 0.86 - Math.sin(ang) * 38;
-          Particles.addEmitter(rx, ry, 14, { ...F.fire, angle: ang + Math.PI, spread: 0.6, speed: [30, 90], size: [2, 5], life: [0.2, 0.4] });
+          // little exhaust flicker under the parked rocket (kept inside its square)
+          const rx = b.x - Math.cos(ang) * 30, ry = b.y - Math.sin(ang) * 30;
+          Particles.addEmitter(rx, ry, 12, { ...F.fire, angle: ang + Math.PI, spread: 0.6, speed: [10, 35], size: [2, 4], life: [0.15, 0.3] });
           break;
         }
         case "ufo":
@@ -295,9 +296,9 @@
           Particles.addEmitter(a.x, a.y, 14, { ...F.dark, colors: ["#ffb347", "#ff7b54", "#c77dff"], jitter: 75, speed: [0, 10], attract: { x: a.x, y: a.y, k: 150 }, swirl: 240, life: [0.8, 1.6], size: [2, 4] });
           break;
         case "asteroid":
-          Particles.addEmitter(a.x + 10, a.y - 10, 32, { ...F.fire, angle: -Math.PI / 4, spread: 0.7, speed: [50, 130], size: [4, 10], jitter: 10 });
-          Particles.addEmitter(a.x + 20, a.y - 20, 6, { ...F.ember, angle: -Math.PI / 4, spread: 1, speed: [40, 110] });
-          Particles.addEmitter(a.x + 40, a.y - 40, 2, { ...F.smoke, vy: -10 });
+          // flames licking around the fireball, staying inside its square
+          Particles.addEmitter(a.x, a.y, 22, { ...F.fire, angle: -Math.PI / 2, spread: 1.4, speed: [10, 35], size: [3, 7], life: [0.25, 0.5], jitter: 14 });
+          Particles.addEmitter(a.x, a.y, 4, { ...F.ember, angle: -Math.PI / 2, spread: 1.2, speed: [15, 40], life: [0.4, 0.8] });
           break;
         case "flare":
           Particles.addEmitter(a.x, a.y, 9, { ...F.ember, jitter: 18, speed: [20, 60] });
@@ -667,15 +668,15 @@
     const j = Board.JUMPS[p.pos];
     if (!j) return;
     const k = Board.KINDS[j.kind];
-    const grp = document.getElementById(`jump-${p.pos}`);
+    const grp = Board.jumpEls(p.pos);
     const from = p.pos;
     Camera.fit(cell(from), cell(j.to), 200);
-    grp && grp.classList.add("active");
+    grp.forEach(e => e.classList.add("active"));
     Sfx.alert(k.up ? "up" : "down");
     toast(`${k.icon} ${k.title}`, `${p.emoji} ${escapeHtml(p.name)}: ${delta(from, j.to)}`, k.up ? "up" : "down");
     await windUp(p.x, p.y, KIND_COLOR[j.kind], p);
     await ANIM[j.kind](p, from, j.to);
-    grp && grp.classList.remove("active");
+    grp.forEach(e => e.classList.remove("active"));
     p.pos = j.to;
     chip(p).style.transform = "";
     log(`${k.icon} ${p.name} ${k.verb} ${j.to}.`, p.color);
@@ -1097,7 +1098,7 @@
     const board = $("#board"), tip = $("#tip");
     let hovered = null, tapTimer = 0, down = null;
     const hide = () => {
-      if (hovered !== null) { const g = document.getElementById(`jump-${hovered}`); g && g.classList.remove("hover"); }
+      if (hovered !== null) Board.jumpEls(hovered).forEach(e => e.classList.remove("hover"));
       hovered = null;
       Board.svg().classList.remove("has-hover");
       tip.className = "tip";
@@ -1110,8 +1111,7 @@
       if (hovered !== j.from) {
         hide();
         hovered = j.from;
-        const g = document.getElementById(`jump-${j.from}`);
-        g && g.classList.add("hover");
+        Board.jumpEls(j.from).forEach(e => e.classList.add("hover"));
         Board.svg().classList.add("has-hover");
       }
       const k = Board.KINDS[j.kind];

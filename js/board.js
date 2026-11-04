@@ -312,8 +312,11 @@ const Board = (() => {
     // draw order: things that sit "under" first
     const order = ["comet", "flare", "wormhole", "ufo", "rocket", "storm", "asteroid", "blackhole"];
     const count = {};
+    // every path line sits behind every element graphic, so lines never cover an element
+    linesRoot = el("g", { class: "lines-layer" }, svg);
+    objectsRoot = el("g", { class: "objects-layer" }, svg);
     for (const kind of order) {
-      const layer = el("g", { class: `layer-${kind}` }, svg);
+      const layer = null;
       for (const [from, j] of Object.entries(JUMPS)) {
         if (j.kind !== kind) continue;
         const i = (count[kind] = (count[kind] || 0) + 1) - 1;
@@ -331,7 +334,15 @@ const Board = (() => {
     return `M${a.x},${a.y} Q${cx.toFixed(1)},${cy.toFixed(1)} ${b.x},${b.y}`;
   }
   function guide(g, from, d) { guides[from] = el("path", { d, fill: "none", stroke: "none" }, g); }
-  function group(layer, kind, from) { return el("g", { class: `jump jump-${kind}`, id: `jump-${from}` }, layer); }
+  let linesRoot = null, objectsRoot = null;
+  /** Element group (front layer); its path lines go in g.lines (back layer). */
+  function group(layer, kind, from) {
+    const g = el("g", { class: `jump jump-${kind}`, id: `jump-${from}`, "data-jump": from }, objectsRoot);
+    g.lines = el("g", { class: `jump jump-${kind} jump-lines`, "data-jump": from }, linesRoot);
+    return g;
+  }
+  /** Both layers of the element starting at `from` (for highlighting). */
+  function jumpEls(from) { return document.querySelectorAll(`[data-jump="${from}"]`); }
   function grad(defs, id, a, b, stops) {
     const gr = el("linearGradient", { id, gradientUnits: "userSpaceOnUse", x1: a.x, y1: a.y, x2: b.x, y2: b.y }, defs);
     stops.forEach(([o, c, op = 1]) => el("stop", { offset: o, "stop-color": c, "stop-opacity": op }, gr));
@@ -355,10 +366,10 @@ const Board = (() => {
     const cid = `ufo-clip-${from}`;
     const clip = el("clipPath", { id: cid }, defs);
     el("polygon", { points: beam }, clip);
-    el("polygon", { points: beam, fill: grad(defs, `ub${from}`, { x: ux, y: uy }, a, [["0", "#9dffb0", 0.6], ["1", "#3ee08f", 0.08]]) }, g);
+    el("polygon", { points: beam, fill: grad(defs, `ub${from}`, { x: ux, y: uy }, a, [["0", "#9dffb0", 0.6], ["1", "#3ee08f", 0.08]]) }, g.lines);
     // light bands travelling up the beam
-    el("line", { x1: a.x, y1: a.y, x2: ux, y2: uy, stroke: "#c8ffd6", "stroke-width": 90, "stroke-dasharray": "4 26", class: "beam-bands", "clip-path": `url(#${cid})`, opacity: 0.45 }, g);
-    guide(g, from, `M${a.x},${a.y} L${ux},${uy}`);
+    el("line", { x1: a.x, y1: a.y, x2: ux, y2: uy, stroke: "#c8ffd6", "stroke-width": 90, "stroke-dasharray": "4 26", class: "beam-bands", "clip-path": `url(#${cid})`, opacity: 0.45 }, g.lines);
+    guide(g.lines, from, `M${a.x},${a.y} L${ux},${uy}`);
     startRing(g, a, "#3ee08f");
     el("circle", { cx: a.x, cy: a.y, r: 30, fill: "#3ee08f", opacity: 0.15, class: "beam-spot" }, g);
 
@@ -394,9 +405,9 @@ const Board = (() => {
     const a = cellXY(from), b = cellXY(to);
     const g = group(layer, "wormhole", from);
     const d = arcD(a, b, i % 2 ? 0.28 : -0.28);
-    el("path", { d, fill: "none", stroke: "#c77dff", "stroke-width": 6, opacity: 0.25, filter: "url(#glow)" }, g);
-    el("path", { d, fill: "none", stroke: "#e0c3ff", "stroke-width": 2.5, "stroke-dasharray": "2 12", "stroke-linecap": "round", class: "flow", opacity: 0.8 }, g);
-    guide(g, from, d);
+    el("path", { d, fill: "none", stroke: "#c77dff", "stroke-width": 6, opacity: 0.25, filter: "url(#glow)" }, g.lines);
+    el("path", { d, fill: "none", stroke: "#e0c3ff", "stroke-width": 2.5, "stroke-dasharray": "2 12", "stroke-linecap": "round", class: "flow", opacity: 0.8 }, g.lines);
+    guide(g.lines, from, d);
     portal(g, a, "#36d1ff", "#3a0ca3", `wa${from}`, defs, false);
     portal(g, b, "#c77dff", "#7209b7", `wb${from}`, defs, true);
   }
@@ -407,16 +418,16 @@ const Board = (() => {
     const g = group(layer, "comet", from);
     const d = arcD(a, b, i % 2 ? -0.22 : 0.22);
     const tail = grad(defs, `ct${from}`, a, b, [["0", "#36d1ff", 0], ["0.6", "#7fe7ff", 0.5], ["1", "#ffffff", 1]]);
-    el("path", { d, fill: "none", stroke: "#36d1ff", "stroke-width": 26, "stroke-linecap": "round", opacity: 0.16, filter: "url(#glow)" }, g);
-    el("path", { d, fill: "none", stroke: tail, "stroke-width": 11, "stroke-linecap": "round" }, g);
-    el("path", { d, fill: "none", stroke: "#fff", "stroke-width": 2, "stroke-dasharray": "1 16", "stroke-linecap": "round", class: "flow", opacity: 0.9 }, g);
-    guide(g, from, d);
+    el("path", { d, fill: "none", stroke: "#36d1ff", "stroke-width": 26, "stroke-linecap": "round", opacity: 0.16, filter: "url(#glow)" }, g.lines);
+    el("path", { d, fill: "none", stroke: tail, "stroke-width": 11, "stroke-linecap": "round" }, g.lines);
+    el("path", { d, fill: "none", stroke: "#fff", "stroke-width": 2, "stroke-dasharray": "1 16", "stroke-linecap": "round", class: "flow", opacity: 0.9 }, g.lines);
+    guide(g.lines, from, d);
     startRing(g, a, "#7fe7ff");
     // sparkles along the tail
     const gp = guides[from], L = gp.getTotalLength();
     for (let k = 1; k <= 5; k++) {
       const pt = gp.getPointAtLength(L * (k / 7));
-      el("circle", { cx: pt.x + ((k * 13) % 17) - 8, cy: pt.y + ((k * 7) % 15) - 7, r: 2, fill: "#fff", class: "twinkle", style: `animation-delay:${k * 0.3}s` }, g);
+      el("circle", { cx: pt.x + ((k * 13) % 17) - 8, cy: pt.y + ((k * 7) % 15) - 7, r: 2, fill: "#fff", class: "twinkle", style: `animation-delay:${k * 0.3}s` }, g.lines);
     }
     // icy head at destination
     const hg = el("radialGradient", { id: `ch${from}` }, defs);
@@ -432,8 +443,8 @@ const Board = (() => {
     const a = cellXY(from), b = cellXY(to);
     const g = group(layer, "blackhole", from);
     const d = arcD(a, b, i % 2 ? 0.2 : -0.2);
-    el("path", { d, fill: "none", stroke: "#ff7b54", "stroke-width": 2.5, "stroke-dasharray": "3 10", "stroke-linecap": "round", opacity: 0.55, class: "flow" }, g);
-    guide(g, from, d);
+    el("path", { d, fill: "none", stroke: "#ff7b54", "stroke-width": 2.5, "stroke-dasharray": "3 10", "stroke-linecap": "round", opacity: 0.55, class: "flow" }, g.lines);
+    guide(g.lines, from, d);
     // exit (where you get spat out)
     el("circle", { cx: b.x, cy: b.y, r: 22, fill: "none", stroke: "#ff7b54", "stroke-width": 2.5, "stroke-dasharray": "4 6", opacity: 0.8, class: "pad-ring" }, g);
     el("circle", { cx: b.x, cy: b.y, r: 5, fill: "#ff7b54", opacity: 0.7 }, g);
@@ -459,24 +470,20 @@ const Board = (() => {
     const cx = (a.x + b.x) / 2 + (i % 2 ? 60 : -60), cy = Math.max(10, Math.min(a.y, b.y) - 90);
     const d = `M${a.x},${a.y} Q${cx},${cy} ${b.x},${b.y}`;
     const fire = grad(defs, `at${from}`, a, b, [["0", "#fff3c4"], ["0.25", "#ffb347"], ["0.65", "#ff4f00", 0.8], ["1", "#b5179e", 0.35]]);
-    el("path", { d, fill: "none", stroke: "#ff4f00", "stroke-width": 24, "stroke-linecap": "round", opacity: 0.22, filter: "url(#glow)", class: "fire-trail" }, g);
-    el("path", { d, fill: "none", stroke: fire, "stroke-width": 8, "stroke-linecap": "round", class: "fire-trail" }, g);
-    el("path", { d, fill: "none", stroke: "#fff6c9", "stroke-width": 2.5, "stroke-dasharray": "2 12", "stroke-linecap": "round", class: "flow", opacity: 0.85 }, g);
-    guide(g, from, d);
+    el("path", { d, fill: "none", stroke: "#ff4f00", "stroke-width": 24, "stroke-linecap": "round", opacity: 0.22, filter: "url(#glow)", class: "fire-trail" }, g.lines);
+    el("path", { d, fill: "none", stroke: fire, "stroke-width": 8, "stroke-linecap": "round", class: "fire-trail" }, g.lines);
+    el("path", { d, fill: "none", stroke: "#fff6c9", "stroke-width": 2.5, "stroke-dasharray": "2 12", "stroke-linecap": "round", class: "flow", opacity: 0.85 }, g.lines);
+    guide(g.lines, from, d);
     // scorched crater at landing square
     el("ellipse", { cx: b.x, cy: b.y + 8, rx: 26, ry: 10, fill: "rgba(20,5,0,0.55)", stroke: "#ff6b35", "stroke-width": 2.5, class: "fire-trail" }, g);
 
-    // the fireball, its flames streaming up-right
-    const o = el("g", { transform: `translate(${a.x + 4},${a.y - 4})`, class: "asteroid" }, g);
+    // the fireball: a glowing, red-hot rock that stays inside its own square
+    const o = el("g", { transform: `translate(${a.x},${a.y})`, class: "asteroid" }, g);
     const halo = el("radialGradient", { id: `ah${from}` }, defs);
     el("stop", { offset: "0", "stop-color": "#ffd166", "stop-opacity": 0.9 }, halo);
     el("stop", { offset: "0.5", "stop-color": "#ff4f00", "stop-opacity": 0.45 }, halo);
     el("stop", { offset: "1", "stop-color": "#ff4f00", "stop-opacity": 0 }, halo);
-    el("circle", { r: 42, fill: `url(#ah${from})`, class: "sun-pulse" }, o);
-    const flame = (dd, stops, cls) => el("path", { d: dd, fill: grad(defs, `af${from}${cls}`, { x: a.x + 80, y: a.y - 80 }, { x: a.x, y: a.y }, stops), class: `flame-layer ${cls}` }, o);
-    flame("M-22,10 Q20,-40 92,-92 Q48,-26 10,22 Z", [["0", "#b5179e", 0], ["0.5", "#ff2e63", 0.6], ["1", "#ff4f00", 0.95]], "f1");
-    flame("M-17,7 Q22,-32 74,-74 Q38,-22 7,17 Z", [["0", "#ff4f00", 0], ["0.55", "#ff9e00", 0.85], ["1", "#ffd166", 1]], "f2");
-    flame("M-11,4 Q20,-22 52,-52 Q26,-16 4,11 Z", [["0", "#ffd166", 0], ["0.6", "#fff3c4", 0.9], ["1", "#ffffff", 1]], "f3");
+    el("circle", { r: 34, fill: `url(#ah${from})`, class: "sun-pulse" }, o);
     const r = prng(from * 7);
     const pts = [];
     for (let k = 0; k < 10; k++) {
@@ -507,7 +514,7 @@ const Board = (() => {
       pts.push({ x: a.x + dx * t + nx * off, y: a.y + dy * t + ny * off });
     }
     const d = "M" + pts.map(q => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(" L");
-    const bolt = el("g", { class: "bolt-flicker", style: `animation-delay:${-i * 0.9}s` }, g);
+    const bolt = el("g", { class: "bolt-flicker", style: `animation-delay:${-i * 0.9}s` }, g.lines);
     el("path", { d, fill: "none", stroke: "#7fb8ff", "stroke-width": 18, "stroke-linejoin": "round", opacity: 0.3, filter: "url(#glow)" }, bolt);
     el("path", { d, fill: "none", stroke: "#cfe6ff", "stroke-width": 6, "stroke-linejoin": "round", "stroke-linecap": "round" }, bolt);
     el("path", { d, fill: "none", stroke: "#ffffff", "stroke-width": 2, "stroke-linejoin": "round" }, bolt);
@@ -518,7 +525,7 @@ const Board = (() => {
       const f2 = { x: f1.x + nx * side * 12 + dx / N * 0.5, y: f1.y + ny * side * 12 + dy / N * 0.5 };
       el("path", { d: `M${p0.x.toFixed(1)},${p0.y.toFixed(1)} L${f1.x.toFixed(1)},${f1.y.toFixed(1)} L${f2.x.toFixed(1)},${f2.y.toFixed(1)}`, fill: "none", stroke: "#cfe6ff", "stroke-width": 2.5, "stroke-linejoin": "round", opacity: 0.85 }, bolt);
     }
-    guide(g, from, d);
+    guide(g.lines, from, d);
     // strike mark where you land
     el("circle", { cx: b.x, cy: b.y, r: 20, fill: "none", stroke: "#7fb8ff", "stroke-width": 2.5, "stroke-dasharray": "3 5", opacity: 0.85, class: "pad-ring" }, g);
     el("circle", { cx: b.x, cy: b.y, r: 5, fill: "#cfe6ff", opacity: 0.8 }, g);
@@ -543,10 +550,10 @@ const Board = (() => {
     const g = group(layer, "flare", from);
     const d = arcD(a, b, i % 2 ? 0.35 : -0.35);
     const plasma = grad(defs, `fp${from}`, a, b, [["0", "#fff3c4"], ["0.3", "#ffb347"], ["1", "#ff2e63", 0.5]]);
-    el("path", { d, fill: "none", stroke: "#ff6b35", "stroke-width": 22, opacity: 0.2, filter: "url(#glow)", "stroke-linecap": "round" }, g);
-    el("path", { d, fill: "none", stroke: plasma, "stroke-width": 9, "stroke-linecap": "round", class: "flare-plasma" }, g);
-    el("path", { d, fill: "none", stroke: "#fff", "stroke-width": 2, "stroke-dasharray": "3 14", "stroke-linecap": "round", class: "flow", opacity: 0.7 }, g);
-    guide(g, from, d);
+    el("path", { d, fill: "none", stroke: "#ff6b35", "stroke-width": 22, opacity: 0.2, filter: "url(#glow)", "stroke-linecap": "round" }, g.lines);
+    el("path", { d, fill: "none", stroke: plasma, "stroke-width": 9, "stroke-linecap": "round", class: "flare-plasma" }, g.lines);
+    el("path", { d, fill: "none", stroke: "#fff", "stroke-width": 2, "stroke-dasharray": "3 14", "stroke-linecap": "round", class: "flow", opacity: 0.7 }, g.lines);
+    guide(g.lines, from, d);
     el("circle", { cx: b.x, cy: b.y, r: 18, fill: "none", stroke: "#ff2e63", "stroke-width": 2.5, "stroke-dasharray": "4 5", opacity: 0.8 }, g);
     // the little sun
     const o = el("g", { transform: `translate(${a.x},${a.y})` }, g);
@@ -577,16 +584,14 @@ const Board = (() => {
     el("circle", { cx: a.x, cy: a.y, r: 26, fill: "none", stroke: color, "stroke-width": 3, "stroke-dasharray": "6 5", opacity: 0.8 }, g);
     el("circle", { cx: a.x, cy: a.y, r: 8, fill: color, opacity: 0.6 }, g);
 
-    guide(g, from, `M${a.x},${a.y} L${b.x},${b.y}`);
+    guide(g.lines, from, `M${a.x},${a.y} L${b.x},${b.y}`);
     // exhaust trail
-    el("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: `url(#${gid})`, "stroke-width": 16, "stroke-linecap": "round", filter: "url(#glow)" }, g);
-    el("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: "#fff", "stroke-width": 3, "stroke-linecap": "round", class: "rocket-trail-dash", opacity: 0.7 }, g);
+    el("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: `url(#${gid})`, "stroke-width": 16, "stroke-linecap": "round", filter: "url(#glow)" }, g.lines);
+    el("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: "#fff", "stroke-width": 3, "stroke-linecap": "round", class: "rocket-trail-dash", opacity: 0.7 }, g.lines);
 
-    // the rocket itself, near the destination, pointing along the trail
+    // the rocket itself, parked inside its destination square, pointing along the trail
     const ang = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 90;
-    const t = 0.86;
-    const rx = a.x + (b.x - a.x) * t, ry = a.y + (b.y - a.y) * t;
-    const rocket = el("g", { class: "rocket", transform: `translate(${rx.toFixed(1)},${ry.toFixed(1)}) rotate(${ang.toFixed(1)}) scale(1.25)` }, g);
+    const rocket = el("g", { class: "rocket", transform: `translate(${b.x},${b.y}) rotate(${ang.toFixed(1)}) translate(0,-6) scale(0.95)` }, g);
     el("path", { class: "flame", d: "M-7,22 Q0,52 7,22 Z", fill: "#ffb347" }, rocket);
     el("path", { class: "flame", d: "M-4,22 Q0,40 4,22 Z", fill: "#fff6c9" }, rocket);
     el("path", { d: "M-9,6 L-19,27 L-8,22 Z", fill: color }, rocket);
@@ -605,5 +610,5 @@ const Board = (() => {
     return { x: pt.x, y: pt.y };
   }
 
-  return { JUMPS, KINDS, COUNTS, BANDS, cellXY, cellAt, jumpAt, isBalanced, build, pathPoint, randomize, svg: () => svgRoot };
+  return { jumpEls, JUMPS, KINDS, COUNTS, BANDS, cellXY, cellAt, jumpAt, isBalanced, build, pathPoint, randomize, svg: () => svgRoot };
 })();
