@@ -52,6 +52,8 @@ const Board = (() => {
   const NS = "http://www.w3.org/2000/svg";
   const guides = {}; // start square -> invisible SVG path used to animate tokens
   let cells = {};    // square -> cell element
+  const BEACONS = []; // squares holding a cosmic beacon (landing there triggers a cosmic event)
+  const BEACON_COUNT = 2;
   let svgRoot = null;
 
   /** Cell number (1..100) -> centre in board units (0..1000). */
@@ -196,17 +198,44 @@ const Board = (() => {
     COUNTS = counts;
     for (const k of Object.keys(JUMPS)) delete JUMPS[k];
     Object.assign(JUMPS, next);
+    placeBeacons(avoid);
     applyLayout();
     return true;
+  }
+
+  /**
+   * Put each beacon in the middle of the biggest empty stretch between element squares
+   * (starts and destinations, plus squares 1 and 100), one after the other.
+   */
+  function placeBeacons(avoid = []) {
+    BEACONS.length = 0;
+    const taken = new Set([1, 100]);
+    for (const [f, j] of Object.entries(JUMPS)) { taken.add(+f); taken.add(j.to); }
+    for (let b = 0; b < BEACON_COUNT; b++) {
+      const sorted = [...taken].sort((x, y) => x - y);
+      let best = null;
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const lo = sorted[i], hi = sorted[i + 1], gap = hi - lo - 1;
+        if (gap < 1) continue;
+        // middle of the gap, nudged off any square a piece is standing on
+        const mid = Math.floor((lo + hi) / 2);
+        const spot = [0, 1, -1, 2, -2, 3, -3].map(d => mid + d).find(n => n > lo && n < hi && !avoid.includes(n));
+        if (spot && (!best || gap > best.gap)) best = { gap, spot };
+      }
+      if (!best) break;
+      BEACONS.push(best.spot);
+      taken.add(best.spot);
+    }
   }
 
   /** Redraw elements and start-square markers for the current layout. */
   function applyLayout() {
     for (const k of Object.keys(guides)) delete guides[k];
     for (const [n, c] of Object.entries(cells)) {
-      c.classList.remove("up-start", "down-start");
+      c.classList.remove("up-start", "down-start", "beacon-start");
       const j = JUMPS[n];
       if (j) c.classList.add(KINDS[j.kind].up ? "up-start" : "down-start");
+      if (BEACONS.includes(+n)) c.classList.add("beacon-start");
     }
     svgRoot.innerHTML = "";
     buildSvg(svgRoot);
@@ -341,6 +370,27 @@ const Board = (() => {
         DRAW[kind](layer, defs, +from, j.to, i);
       }
     }
+    BEACONS.forEach((n, i) => drawBeacon(defs, n, i));
+  }
+
+  // ---------- Cosmic beacon (triggers a cosmic event) ----------
+  function drawBeacon(defs, n, i) {
+    const c = cellXY(n);
+    const g = el("g", { class: "beacon", "data-beacon": n, transform: `translate(${c.x},${c.y + 4})` }, objectsRoot);
+    const rg = el("radialGradient", { id: `bc${n}` }, defs);
+    el("stop", { offset: "0", "stop-color": "#e0c3ff", "stop-opacity": 0.65 }, rg);
+    el("stop", { offset: "0.6", "stop-color": "#7b2ff7", "stop-opacity": 0.3 }, rg);
+    el("stop", { offset: "1", "stop-color": "#7b2ff7", "stop-opacity": 0 }, rg);
+    el("circle", { r: 36, fill: `url(#bc${n})` }, g);
+    // signal waves
+    for (let k = 0; k < 2; k++) el("circle", { r: 16, fill: "none", stroke: "#c77dff", "stroke-width": 2.5, class: "beacon-wave", style: `animation-delay:${k * 0.9 + i * 0.4}s` }, g);
+    // pad
+    el("ellipse", { cx: 0, cy: 18, rx: 20, ry: 6, fill: "#2a1d5c", stroke: "#c77dff", "stroke-width": 1.5 }, g);
+    // mast and dish
+    el("path", { d: "M-6,18 L0,0 L6,18", fill: "none", stroke: "#d9ccff", "stroke-width": 3, "stroke-linejoin": "round" }, g);
+    el("path", { d: "M-17,-4 Q0,14 17,-4 Z", fill: "#eee6ff", stroke: "#9b7cf0", "stroke-width": 1.5, transform: "rotate(-20)" }, g);
+    el("line", { x1: 0, y1: 2, x2: 7, y2: -16, stroke: "#d9ccff", "stroke-width": 2 }, g);
+    el("circle", { cx: 7, cy: -18, r: 4.5, fill: "#ffffff", class: "beacon-orb" }, g);
   }
 
   // ---------- shared geometry ----------
@@ -628,5 +678,5 @@ const Board = (() => {
     return { x: pt.x, y: pt.y };
   }
 
-  return { get COUNTS() { return COUNTS; }, jumpEls, JUMPS, KINDS, BANDS, cellXY, cellAt, jumpAt, isBalanced, build, pathPoint, randomize, svg: () => svgRoot };
+  return { get COUNTS() { return COUNTS; }, BEACONS, jumpEls, JUMPS, KINDS, BANDS, cellXY, cellAt, jumpAt, isBalanced, build, pathPoint, randomize, svg: () => svgRoot };
 })();

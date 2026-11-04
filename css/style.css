@@ -604,3 +604,15 @@ kbd { font-family: var(--font-body); font-size: 0.75em; padding: 1px 6px; border
   .term-bar { font-size: 10px; gap: 6px; letter-spacing: 0.04em; padding: 6px 10px; }
   .term-dots i { width: 7px; height: 7px; }
 }
+
+/* ---------------- Cosmic beacons ---------------- */
+.cell.beacon-start .num { color: #d9b8ff; }
+.beacon-wave { transform-box: fill-box; transform-origin: center; animation: beaconWave 1.8s ease-out infinite; opacity: 0; }
+@keyframes beaconWave { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(2.6); opacity: 0; } }
+.beacon-orb { animation: blinkLight 1.2s ease-in-out infinite; filter: drop-shadow(0 0 6px #e0c3ff); }
+.beacon { transition: filter 0.3s; }
+.beacon.active { filter: drop-shadow(0 0 16px #c77dff) brightness(1.5); }
+.paths.has-hover .beacon { opacity: 0.25; transition: opacity 0.2s; }
+.tip.beacon { border-color: #c77dff; }
+.legend-extra { grid-column: 1 / -1; font-size: 0.82rem; color: #cdd5f5; margin-top: 4px; }
+.legend-extra span { display: inline-block; width: 22px; }

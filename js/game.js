@@ -12,7 +12,7 @@
   const DEFAULT_NAMES = ["Nova", "Orion", "Vega", "Luna", "Atlas"];
   const MAX = 5;
   const GOAL = 100;
-  const EVENT_EVERY = 3;     // cosmic event every N rounds
+  const EVENT_GAP = [3, 5];  // a cosmic event comes every 3–5 rounds (random each time)
   const BUMP_BACK = 2;       // squares a rival is knocked back on collision
   const FINAL_STRETCH = 75;  // music intensifies once someone passes this
 
@@ -40,6 +40,7 @@
   let current = 0;
   let phase = "idle";          // idle | roll | moving | over
   let round = 1;
+  let nextEventRound = 4;    // round on which the next scheduled cosmic event fires
   let extraRoll = false;
   let forcedRoll = null;
   let turnToken = 0;           // guards delayed callbacks from older turns
@@ -152,6 +153,7 @@
     }));
     current = 0;
     round = 1;
+    scheduleNextEvent();
     forcedRoll = null;
     extraRoll = false;
 
@@ -308,6 +310,10 @@
     }
     const g = cell(GOAL);
     Particles.addEmitter(g.x, g.y, 6, { ...Particles.FX.gold, jitter: 45 });
+    for (const n of Board.BEACONS) {
+      const c = cell(n);
+      Particles.addEmitter(c.x, c.y - 10, 4, { ...Particles.FX.purple, angle: -Math.PI / 2, spread: 1.2, speed: [10, 30], life: [0.6, 1.1], jitter: 10 });
+    }
   }
 
   // ==================================================================
@@ -621,6 +627,11 @@
     updatePanel();
     updateIntensity();
 
+    if (p.pos !== GOAL && Board.BEACONS.includes(p.pos)) {
+      if ((await beaconEvent(p)) === "ended") return;
+      if (p.finished) { extraRoll = false; return nextPlayer(); }
+    }
+
     if (p.pos === GOAL) {
       const r = await finish(p);
       if (r === "ended") return;
@@ -723,14 +734,39 @@
 
   const TURN_GAP = 500; // pause after a turn finishes before the next player starts
 
+  function scheduleNextEvent() {
+    nextEventRound = round + EVENT_GAP[0] + Math.floor(Math.random() * (EVENT_GAP[1] - EVENT_GAP[0] + 1));
+  }
+  const roundsToEvent = () => Math.max(0, nextEventRound - round);
+
+  /** A ship ended its move on a cosmic beacon: it fires a random cosmic event right now. */
+  async function beaconEvent(p) {
+    const c = cell(p.pos);
+    Camera.focus(c.x, c.y, 2.2);
+    Sfx.alert("event");
+    toast("📡 Cosmic beacon activated!", `${p.emoji} ${escapeHtml(p.name)} triggered a cosmic event`, "event");
+    setStatus(`BEACON SIGNAL DETECTED AT SQUARE ${p.pos}`, "Cosmic event incoming…");
+    log(`📡 ${p.name} activated the cosmic beacon on square ${p.pos}.`, p.color);
+    document.querySelectorAll(`[data-beacon="${p.pos}"]`).forEach(e => e.classList.add("active"));
+    for (let i = 0; i < 3; i++) setTimeout(() => Particles.ring(c.x, c.y, "#c77dff", 90 + i * 60, 0.7), i * 220);
+    await windUp(c.x, c.y, "#c77dff", p);
+    document.querySelectorAll("[data-beacon].active").forEach(e => e.classList.remove("active"));
+    await cosmicEvent();
+    scheduleNextEvent(); // the countdown starts over after a beacon event
+    setMeta();
+    updatePanel();
+    return settleFinishers();
+  }
+
   async function nextPlayer() {
     phase = "moving";
     refreshControls();
     await sleep(TURN_GAP);
     if (advance()) {
       round++;
-      if ((round - 1) % EVENT_EVERY === 0) {
+      if (round >= nextEventRound) {
         await cosmicEvent();
+        scheduleNextEvent();
         if ((await settleFinishers()) === "ended") return;
         if (cur().finished) advance();
       }
@@ -1026,7 +1062,7 @@
         <div class="tp-sub">${status}</div>
       </div>`;
 
-    const nextEvent = EVENT_EVERY - ((round - 1) % EVENT_EVERY);
+    const nextEvent = roundsToEvent();
     $("#round-info").innerHTML = `Round <b>${round}</b> · cosmic event in ${nextEvent} round${nextEvent > 1 ? "s" : ""}`;
 
     const list = $("#player-list");
@@ -1076,7 +1112,7 @@
   }
   function setMeta() {
     if (!players.length) return;
-    const nextEvent = EVENT_EVERY - ((round - 1) % EVENT_EVERY);
+    const nextEvent = roundsToEvent();
     const racing = active().length;
     $("#term-meta").textContent = `RND ${String(round).padStart(2, "0")} · EVENT T-${nextEvent} · ${racing} SHIP${racing > 1 ? "S" : ""}`;
   }
@@ -1107,7 +1143,8 @@
     for (const k of Object.values(Board.KINDS)) (k.up ? ups : downs).push(`<li><span>${k.icon}</span>${k.name}</li>`);
     $("#legend").innerHTML = `
       <div><h4 class="up">Boosts ▲</h4><ul>${ups.join("")}</ul></div>
-      <div><h4 class="down">Hazards ▼</h4><ul>${downs.join("")}</ul></div>`;
+      <div><h4 class="down">Hazards ▼</h4><ul>${downs.join("")}</ul></div>
+      <div class="legend-extra"><span>📡</span>Cosmic beacon: land on it to trigger a cosmic event</div>`;
   }
 
   function toggleFullscreen() {
@@ -1145,6 +1182,15 @@
       const u = Camera.unproject(px, py);
       const n = Board.cellAt(u.x, u.y);
       const j = n && Board.jumpAt(n);
+      if (n && !j && Board.BEACONS.includes(n)) {
+        hide();
+        tip.innerHTML = `<b>📡 Cosmic beacon</b><span>Square ${n}</span><em>Land here to trigger a random cosmic event</em>`;
+        tip.className = "tip show beacon";
+        const W = board.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+        tip.style.left = Math.max(6, Math.min(W - tw - 6, px - tw / 2)) + "px";
+        tip.style.top = (py - th - 16 < 6 ? py + 22 : py - th - 16) + "px";
+        return;
+      }
       if (!j) return hide();
       if (hovered !== j.from) {
         hide();
@@ -1297,7 +1343,7 @@
     document.addEventListener("keyup", e => { if (e.code === "Space") { e.preventDefault(); endCharge(true); } });
 
     // tiny hook for automated tests
-    window.__aq = { get state() { return { phase, current, round, players: players.map(p => ({ pos: p.pos, finished: p.finished, place: p.place, stats: p.stats })) }; } };
+    window.__aq = { get state() { return { phase, current, round, nextEventRound, players: players.map(p => ({ pos: p.pos, finished: p.finished, place: p.place, stats: p.stats })) }; } };
   }
 
   init();
