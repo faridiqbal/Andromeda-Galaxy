@@ -180,7 +180,6 @@
   function backToSetup() {
     phase = "idle";
     turnToken++;
-    dimTurnBanner(true);
     Music.setIntensity(0);
     $("#win-modal").classList.remove("open");
     $("#results-modal").classList.remove("open");
@@ -479,7 +478,6 @@
     layoutTokens();
     updatePanel();
     if (!extraRoll) Sfx.turn();
-    showTurnBanner(p);
     Particles.ring(p.x, p.y, p.color, 70, 0.8);
     // cinematic swoop: zoom in on whose turn it is, then pull back for the dice
     Camera.focus(p.x, p.y, 2.1);
@@ -492,52 +490,6 @@
     } else {
       $("#roll-btn").focus({ preventScroll: true });
     }
-  }
-
-  // ---------- turn banner: whose turn it is, shown on the board ----------
-  const TURN_BANNER_MIN = 800; // stays at least this long, and until the dice is thrown
-  let bannerShownAt = 0;
-  let bannerId = 0;
-  function showTurnBanner(p) {
-    const el = $("#turn-banner");
-    bannerId++;
-    bannerShownAt = performance.now();
-    el.style.setProperty("--pc", p.color);
-    // bottom-left or bottom-right (the top is kept clear for event notifications),
-    // whichever is further from this player's piece so it never covers it
-    const { x, y } = cell(p.pos);
-    const corners = { bl: [0, 1000], br: [1000, 1000] };
-    const corner = Object.keys(corners).sort((a, b) =>
-      Math.hypot(corners[b][0] - x, corners[b][1] - y) - Math.hypot(corners[a][0] - x, corners[a][1] - y))[0];
-    el.className = `turn-banner ${corner}`;
-    el.innerHTML = `
-      <div class="tb-badge">${p.emoji}</div>
-      <div class="tb-text">
-        <div class="tb-label">${extraRoll ? "🔥 Extra roll" : p.cpu ? "CPU's turn" : "Your turn"} · Round ${round}</div>
-        <div class="tb-name">${escapeHtml(p.name)}</div>
-      </div>`;
-    // if the piece still sits under the banner (bottom rows, near the middle), lift it above the piece
-    el.style.bottom = "";
-    const W = $("#board").clientWidth, bw = el.offsetWidth, bh = el.offsetHeight;
-    const px = (x / 1000) * W, py = (y / 1000) * W, half = W * 0.045;
-    const left = corner === "bl" ? 14 : W - 58 - bw;
-    const overlapsX = px + half > left && px - half < left + bw;
-    const overlapsY = py + half > W - 14 - bh;
-    if (overlapsX && overlapsY) el.style.bottom = Math.round(W - py + half + 8) + "px";
-    gsap.killTweensOf(el);
-    const fromY = corner[0] === "t" ? -30 : 30;
-    gsap.fromTo(el, { opacity: 0, y: fromY, scale: 0.85 }, { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "back.out(2)" });
-  }
-  /** Fade the banner once the dice is thrown, but never before it has shown for 800 ms. */
-  async function dimTurnBanner(now = false) {
-    const id = bannerId;
-    const left = TURN_BANNER_MIN - (performance.now() - bannerShownAt);
-    if (!now && left > 0) await sleep(left);
-    if (id !== bannerId) return; // a newer banner replaced this one
-    const el = $("#turn-banner");
-    el.classList.add("gone"); // faded banners shouldn't catch the mouse
-    gsap.killTweensOf(el);
-    gsap.to(el, { opacity: 0, y: el.classList.contains("tl") || el.classList.contains("tr") ? -20 : 20, scale: 0.92, duration: now ? 0.2 : 0.5, ease: "power2.in" });
   }
 
   // ---------- hold to throw: charge a power meter, release to throw ----------
@@ -575,7 +527,6 @@
     if (phase !== "roll") return;
     phase = "moving";
     turnToken++;
-    dimTurnBanner();
     Sfx.unlock();
     Music.start();
     refreshControls();
@@ -922,7 +873,6 @@
     p.finishRound = round;
     phase = "moving";
     turnToken++;
-    dimTurnBanner(true);
     layoutTokens();
     refreshControls();
     updatePanel();
@@ -981,7 +931,6 @@
     for (const r of active().sort((a, b) => b.pos - a.pos)) r.place = ++place;
     phase = "over";
     turnToken++;
-    dimTurnBanner(true);
     layoutTokens();
     updatePanel();
     Music.setIntensity(0);
@@ -1236,19 +1185,6 @@
     renderTestDice();
     setupPreview();
 
-    // turn banner: hover (mouse) to see through it; click / tap to keep it see-through
-    const tb = $("#turn-banner");
-    tb.addEventListener("pointerenter", e => { if (e.pointerType === "mouse") tb.classList.add("peek"); });
-    tb.addEventListener("pointerleave", e => { if (e.pointerType === "mouse" && !tb.classList.contains("pinned")) tb.classList.remove("peek"); });
-    tb.addEventListener("click", e => {
-      e.stopPropagation();
-      const pin = !tb.classList.contains("pinned");
-      tb.classList.toggle("pinned", pin);
-      tb.classList.toggle("peek", pin || (e.pointerType === "mouse" && tb.matches(":hover")));
-    });
-    // keep taps on the banner from dragging the camera or opening element previews
-    ["pointerdown", "pointerup", "pointermove"].forEach(t => tb.addEventListener(t, e => e.stopPropagation()));
-
     const tt = $("#test-toggle");
     tt.checked = testMode;
     tt.onchange = () => { testMode = tt.checked; Sfx.click(); };
@@ -1280,8 +1216,7 @@
     $("#test-event-go").onclick = async () => {
       if (phase !== "roll") return Sfx.error();
       turnToken++;
-      dimTurnBanner(true);
-      await cosmicEvent($("#test-event").value);
+        await cosmicEvent($("#test-event").value);
       if ((await settleFinishers()) === "ended") return;
       if (cur().finished) advance();
       beginTurn();
@@ -1324,7 +1259,7 @@
     document.addEventListener("keyup", e => { if (e.code === "Space") { e.preventDefault(); endCharge(true); } });
 
     // tiny hook for automated tests
-    window.__aq = { debugBanner: () => players.length && showTurnBanner(cur()), get state() { return { phase, current, round, players: players.map(p => ({ pos: p.pos, finished: p.finished, place: p.place, stats: p.stats })) }; } };
+    window.__aq = { get state() { return { phase, current, round, players: players.map(p => ({ pos: p.pos, finished: p.finished, place: p.place, stats: p.stats })) }; } };
   }
 
   init();
