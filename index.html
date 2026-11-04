@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Andromeda Quest</title>
+  <meta name="description" content="A space-themed rockets & serpents board game for up to 5 players. Race from Earth to the Andromeda Galaxy!" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Exo+2:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <canvas id="starfield" aria-hidden="true"></canvas>
+
+  <!-- ============ SETUP SCREEN ============ -->
+  <section id="setup" class="screen active">
+    <div class="setup-card glass">
+      <header class="setup-head">
+        <div class="logo-orbit" aria-hidden="true"><span>🚀</span></div>
+        <h1>ANDROMEDA <em>QUEST</em></h1>
+        <p class="tagline">Ride the rockets, dodge the space serpents, and be the first crew to reach the Andromeda Galaxy.</p>
+      </header>
+
+      <div class="setup-section">
+        <h2>Number of commanders</h2>
+        <div id="count-picker" class="count-picker" role="radiogroup" aria-label="Number of players"></div>
+      </div>
+
+      <div class="setup-section">
+        <h2>Crew roster</h2>
+        <div id="roster" class="roster"></div>
+      </div>
+
+      <button id="launch-btn" class="btn btn-primary btn-big">
+        <span>Launch mission</span> <span aria-hidden="true">🚀</span>
+      </button>
+      <p class="hint">Rockets boost you up. Space serpents drag you down. Roll past square 100 and you bounce back for the rest of that roll.</p>
+    </div>
+  </section>
+
+  <!-- ============ GAME SCREEN ============ -->
+  <section id="game" class="screen">
+    <div class="board-area">
+      <div id="board-wrap" class="board-wrap">
+        <div id="board" class="board">
+          <div id="grid" class="grid"></div>
+          <svg id="paths" class="paths" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <div id="tokens" class="tokens"></div>
+          <div id="dice-stage" class="dice-stage" aria-hidden="true"></div>
+          <div id="toast" class="toast" role="status" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="panel glass">
+      <div class="panel-head">
+        <h1 class="mini-title">ANDROMEDA <em>QUEST</em></h1>
+        <div class="panel-tools">
+          <button id="mute-btn" class="icon-btn" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+          <button id="restart-btn" class="icon-btn" title="New mission" aria-label="New mission">⟲</button>
+        </div>
+      </div>
+
+      <div class="turn-box">
+        <div class="turn-label">Current turn</div>
+        <div id="turn-player" class="turn-player"></div>
+      </div>
+
+      <div class="roll-box">
+        <div id="dice-result" class="dice-result" aria-live="polite">–</div>
+        <button id="roll-btn" class="btn btn-primary roll-btn">
+          <span>Roll the dice</span>
+          <kbd>Space</kbd>
+        </button>
+      </div>
+
+      <ul id="player-list" class="player-list"></ul>
+
+      <div class="log-box">
+        <div class="turn-label">Mission log</div>
+        <ol id="log" class="log"></ol>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ============ WIN MODAL ============ -->
+  <div id="win-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="win-title">
+    <div class="modal-card glass">
+      <div id="win-avatar" class="win-avatar"></div>
+      <h2 id="win-title">Mission complete!</h2>
+      <p id="win-text"></p>
+      <div class="modal-actions">
+        <button id="again-btn" class="btn btn-primary">Play again</button>
+        <button id="newcrew-btn" class="btn btn-ghost">New crew</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/lib/three.min.js"></script>
+  <script src="js/lib/gsap.min.js"></script>
+  <script src="js/lib/confetti.browser.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/starfield.js"></script>
+  <script src="js/dice.js"></script>
+  <script src="js/board.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
