@@ -90,7 +90,7 @@ const Board = (() => {
       const starts = new Set();
       const out = {};
       const left = { ...COUNTS };
-      const perRow = Array(10).fill(0); // element starts in each board row (max MAX_PER_ROW)
+      const perRow = Array(10).fill(0); // element squares (starts AND destinations) in each row, max MAX_PER_ROW
       let ok = true;
 
       // Guard the finish line: one hazard always starts on a square from 95 to 99
@@ -103,7 +103,7 @@ const Board = (() => {
       const gTo = gFrom - (glo + Math.floor(Math.random() * (ghi - glo + 1)));
       out[gFrom] = { to: gTo, kind: gk };
       used.add(gFrom); used.add(gTo); starts.add(gFrom);
-      perRow[rowOf(gFrom)]++;
+      perRow[rowOf(gFrom)]++; perRow[rowOf(gTo)]++;
       left[gk]--;
 
       for (const kind of kinds) {
@@ -119,10 +119,13 @@ const Board = (() => {
             if (used.has(from) || used.has(to) || avoid.includes(from)) continue;
             if (starts.has(from - 1) || starts.has(from + 1)) continue;
             if (rowOf(from) === rowOf(to)) continue;
-            if (perRow[rowOf(from)] >= MAX_PER_ROW) continue;
+            if (perRow[rowOf(from)] >= MAX_PER_ROW || perRow[rowOf(to)] >= MAX_PER_ROW) continue;
+            // the board is tight (34 squares in 40 row slots): prefer quieter rows
+            const load = perRow[rowOf(from)] + perRow[rowOf(to)];
+            if (load > 4 && Math.random() < 0.6) continue;
             out[from] = { to, kind };
             used.add(from); used.add(to); starts.add(from);
-            perRow[rowOf(from)]++;
+            perRow[rowOf(from)]++; perRow[rowOf(to)]++;
             placed = true;
           }
           if (!placed) ok = false;
@@ -138,15 +141,15 @@ const Board = (() => {
    * Fairness: each third of the board (2–33, 34–66, 67–99) gets at least 2 boosts and
    * 2 hazards, and no third is overloaded with more than 4 hazards or 4 boosts.
    * There is also always at least one hazard starting on squares 95–99, and no board row
-   * holds more than 2 element starts.
+   * holds more than 4 element squares (starts and destinations together).
    */
   const BANDS = [[2, 33], [34, 66], [67, 99]];
   const FINAL_GUARD = [95, 96, 97, 98, 99];
-  const MAX_PER_ROW = 2;
+  const MAX_PER_ROW = 4; // element squares per row, counting starts and destinations
   function isBalanced(layout) {
     const guarded = FINAL_GUARD.some(n => layout[n] && !KINDS[layout[n].kind].up);
     const perRow = Array(10).fill(0);
-    for (const f of Object.keys(layout)) perRow[rowOf(+f)]++;
+    for (const [f, j] of Object.entries(layout)) { perRow[rowOf(+f)]++; perRow[rowOf(j.to)]++; }
     if (perRow.some(c => c > MAX_PER_ROW)) return false;
     return guarded && BANDS.every(([lo, hi]) => {
       let up = 0, down = 0;
