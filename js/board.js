@@ -89,9 +89,23 @@ const Board = (() => {
       const used = new Set([1, 100]);
       const starts = new Set();
       const out = {};
+      const left = { ...COUNTS };
       let ok = true;
+
+      // Guard the finish line: one hazard always starts on a square from 95 to 99
+      const guardSquares = FINAL_GUARD.filter(n => !avoid.includes(n));
+      if (!guardSquares.length) return null;
+      const hazardPool = kinds.filter(k => !KINDS[k].up).flatMap(k => Array(COUNTS[k]).fill(k));
+      const gk = hazardPool[Math.floor(Math.random() * hazardPool.length)];
+      const gFrom = guardSquares[Math.floor(Math.random() * guardSquares.length)];
+      const [glo, ghi] = REACH[gk];
+      const gTo = gFrom - (glo + Math.floor(Math.random() * (ghi - glo + 1)));
+      out[gFrom] = { to: gTo, kind: gk };
+      used.add(gFrom); used.add(gTo); starts.add(gFrom);
+      left[gk]--;
+
       for (const kind of kinds) {
-        for (let c = 0; c < COUNTS[kind] && ok; c++) {
+        for (let c = 0; c < left[kind] && ok; c++) {
           let placed = false;
           for (let t = 0; t < 300 && !placed; t++) {
             const [lo, hi] = REACH[kind];
@@ -119,10 +133,13 @@ const Board = (() => {
   /**
    * Fairness: each third of the board (2–33, 34–66, 67–99) gets at least 2 boosts and
    * 2 hazards, and no third is overloaded with more than 4 hazards or 4 boosts.
+   * There is also always at least one hazard starting on squares 95–99.
    */
   const BANDS = [[2, 33], [34, 66], [67, 99]];
+  const FINAL_GUARD = [95, 96, 97, 98, 99];
   function isBalanced(layout) {
-    return BANDS.every(([lo, hi]) => {
+    const guarded = FINAL_GUARD.some(n => layout[n] && !KINDS[layout[n].kind].up);
+    return guarded && BANDS.every(([lo, hi]) => {
       let up = 0, down = 0;
       for (const [f, j] of Object.entries(layout)) {
         if (+f < lo || +f > hi) continue;

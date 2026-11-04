@@ -503,9 +503,10 @@
     bannerId++;
     bannerShownAt = performance.now();
     el.style.setProperty("--pc", p.color);
-    // put the banner in the board corner furthest from this player's piece so it never covers it
+    // bottom-left or bottom-right (the top is kept clear for event notifications),
+    // whichever is further from this player's piece so it never covers it
     const { x, y } = cell(p.pos);
-    const corners = { tl: [0, 0], tr: [1000, 0], bl: [0, 1000], br: [1000, 1000] };
+    const corners = { bl: [0, 1000], br: [1000, 1000] };
     const corner = Object.keys(corners).sort((a, b) =>
       Math.hypot(corners[b][0] - x, corners[b][1] - y) - Math.hypot(corners[a][0] - x, corners[a][1] - y))[0];
     el.className = `turn-banner ${corner}`;
@@ -515,6 +516,14 @@
         <div class="tb-label">${extraRoll ? "🔥 Extra roll" : p.cpu ? "CPU's turn" : "Your turn"} · Round ${round}</div>
         <div class="tb-name">${escapeHtml(p.name)}</div>
       </div>`;
+    // if the piece still sits under the banner (bottom rows, near the middle), lift it above the piece
+    el.style.bottom = "";
+    const W = $("#board").clientWidth, bw = el.offsetWidth, bh = el.offsetHeight;
+    const px = (x / 1000) * W, py = (y / 1000) * W, half = W * 0.045;
+    const left = corner === "bl" ? 14 : W - 58 - bw;
+    const overlapsX = px + half > left && px - half < left + bw;
+    const overlapsY = py + half > W - 14 - bh;
+    if (overlapsX && overlapsY) el.style.bottom = Math.round(W - py + half + 8) + "px";
     gsap.killTweensOf(el);
     const fromY = corner[0] === "t" ? -30 : 30;
     gsap.fromTo(el, { opacity: 0, y: fromY, scale: 0.85 }, { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "back.out(2)" });
@@ -1315,7 +1324,7 @@
     document.addEventListener("keyup", e => { if (e.code === "Space") { e.preventDefault(); endCharge(true); } });
 
     // tiny hook for automated tests
-    window.__aq = { get state() { return { phase, current, round, players: players.map(p => ({ pos: p.pos, finished: p.finished, place: p.place, stats: p.stats })) }; } };
+    window.__aq = { debugBanner: () => players.length && showTurnBanner(cur()), get state() { return { phase, current, round, players: players.map(p => ({ pos: p.pos, finished: p.finished, place: p.place, stats: p.stats })) }; } };
   }
 
   init();
