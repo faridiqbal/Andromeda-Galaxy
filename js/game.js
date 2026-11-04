@@ -1,4 +1,4 @@
-/* Andromeda Quest — game engine: setup, turn phases, abilities, energy, events, CPU, animations. */
+/* Andromeda Quest — turn-based dice game engine with cinematic camera, particles and music. */
 (() => {
   // ------------------------------------------------------------------
   //  CONFIG
@@ -12,19 +12,15 @@
   const DEFAULT_NAMES = ["Nova", "Orion", "Vega", "Luna", "Atlas"];
   const MAX = 5;
   const GOAL = 100;
-  const MAX_ENERGY = 5;
-  const START_ENERGY = 2;
-  const CRYSTAL_COUNT = 6;
-  const EVENT_EVERY = 3;          // a cosmic event every N rounds
-  const BUMP_BACK = 2;            // squares a rival is knocked back
-  const MAX_THRUST = 2;           // max |adjustment| to a roll
-  const COST = { shield: 2, thrust: 1, reroll: 2 };
+  const EVENT_EVERY = 3;     // cosmic event every N rounds
+  const BUMP_BACK = 2;       // squares a rival is knocked back on collision
+  const FINAL_STRETCH = 75;  // music intensifies once someone passes this
 
   const EVENTS = [
-    { id: "wind",  icon: "🌬️", title: "Solar Wind",   text: "Every commander gains +1 ⚡" },
-    { id: "rain",  icon: "💎", title: "Crystal Rain", text: "Extra energy crystals scatter across the board" },
-    { id: "ion",   icon: "⚡", title: "Ion Storm",    text: "All abilities are FREE this round" },
-    { id: "drain", icon: "🌫️", title: "Nebula Drain", text: "Every commander loses 1 ⚡" },
+    { id: "wind",    icon: "🌬️", title: "Solar Wind",     text: "Every ship is pushed 2 squares forward" },
+    { id: "gravity", icon: "🌑", title: "Gravity Wave",   text: "Every ship is pulled 2 squares back" },
+    { id: "swap",    icon: "🔀", title: "Warp Rift",      text: "The leader and the last ship swap places" },
+    { id: "meteor",  icon: "🌠", title: "Meteor Shower",  text: "One unlucky ship is knocked back 3 squares" },
   ];
 
   const $ = s => document.querySelector(s);
@@ -41,16 +37,15 @@
 
   let players = [];
   let current = 0;
-  let phase = "idle";          // idle | roll | rolling | decide | moving | over
-  let turn = null;             // { roll, adjust, paid:[], rerolled }
+  let phase = "idle";          // idle | roll | moving | over
   let round = 1;
-  let ionStorm = false;
-  let forcedRoll = null;       // test mode
-  const crystals = new Map();  // cell -> element
+  let extraRoll = false;
+  let forcedRoll = null;
+  let turnToken = 0;           // guards delayed callbacks from older turns
 
   const cur = () => players[current];
   const chip = p => p.el.querySelector(".chip");
-  const cost = k => (ionStorm ? 0 : COST[k]);
+  const cell = n => Board.cellXY(n);
 
   // ==================================================================
   //  SETUP SCREEN
@@ -139,6 +134,8 @@
   // ==================================================================
   function startGame() {
     Sfx.unlock();
+    Music.start();
+    Music.setIntensity(1);
     players = crew.slice(0, count).map((c, i) => ({
       id: i,
       name: (c.name || "").trim() || `Commander ${DEFAULT_NAMES[i]}`,
@@ -146,14 +143,12 @@
       color: c.color,
       cpu: c.cpu,
       pos: 1,
-      energy: START_ENERGY,
-      shield: false,
       el: null, x: 0, y: 0, ox: 0, oy: 0,
     }));
     current = 0;
     round = 1;
-    ionStorm = false;
     forcedRoll = null;
+    extraRoll = false;
 
     $("#win-modal").classList.remove("open");
     $("#setup").classList.remove("active");
@@ -163,15 +158,20 @@
     $("#test-panel").hidden = !testMode;
 
     createTokens();
-    clearCrystals();
-    for (let i = 0; i < CRYSTAL_COUNT; i++) spawnCrystal(true);
+    Camera.reset();
     requestAnimationFrame(() => Dice3D.resize());
     log(`Mission start! All crews launch from Earth. ${players[0].name} goes first.`);
+    // launch fanfare: particles off Earth
+    const e = cell(1);
+    Particles.ring(e.x, e.y, "#36d1ff", 120, 0.9);
+    Particles.emit(e.x, e.y, { ...Particles.FX.ice, count: 30, speed: [60, 160] });
     beginTurn();
   }
 
   function backToSetup() {
     phase = "idle";
+    turnToken++;
+    Music.setIntensity(0);
     $("#win-modal").classList.remove("open");
     $("#game").classList.remove("active");
     $("#setup").classList.add("active");
@@ -185,16 +185,16 @@
   // ==================================================================
   function createTokens() {
     const layer = $("#tokens");
-    layer.querySelectorAll(".token").forEach(t => t.remove());
+    layer.innerHTML = "";
     for (const p of players) {
       const t = document.createElement("div");
       t.className = "token";
       t.style.setProperty("--pc", p.color);
-      t.innerHTML = `<div class="boost-flame"></div><div class="shield-bubble"></div><div class="chip">${p.emoji}</div>`;
+      t.innerHTML = `<div class="boost-flame"></div><div class="chip">${p.emoji}</div>`;
       t.setAttribute("aria-label", p.name);
       layer.appendChild(t);
       p.el = t;
-      const { x, y } = Board.cellXY(p.pos);
+      const { x, y } = cell(p.pos);
       p.x = x; p.y = y;
     }
     layoutTokens(true);
@@ -206,7 +206,6 @@
     p.el.style.top = clamp(p.y + p.oy) / 10 + "%";
   }
 
-  /** Spread out tokens sharing a square; sync token state classes. */
   function layoutTokens(instant = false) {
     const groups = {};
     for (const p of players) (groups[p.pos] ||= []).push(p);
@@ -219,37 +218,85 @@
           const r = g.length > 3 ? 24 : 20;
           ox = Math.cos(ang) * r; oy = Math.sin(ang) * r;
         }
-        const { x, y } = Board.cellXY(p.pos);
+        const { x, y } = cell(p.pos);
         if (instant) { p.x = x; p.y = y; p.ox = ox; p.oy = oy; place(p); }
         else gsap.to(p, { x, y, ox, oy, duration: 0.3, ease: "power2.out", onUpdate: () => place(p) });
       });
     }
-    players.forEach((p, i) => {
-      p.el.classList.toggle("current", i === current && phase !== "over");
-      p.el.classList.toggle("shielded", p.shield);
-    });
+    players.forEach((p, i) => p.el.classList.toggle("current", i === current && phase !== "over"));
   }
 
-  function hopTo(p, cell, i) {
-    const { x, y } = Board.cellXY(cell);
+  function hopTo(p, n, i, dir = 1) {
+    const { x, y } = cell(n);
     const from = { x: p.x, y: p.y };
     const s = { t: 0 };
     return new Promise(res => {
       gsap.to(s, {
-        t: 1, duration: 0.28, ease: "power1.inOut",
+        t: 1, duration: 0.3, ease: "power1.inOut",
         onUpdate: () => {
           p.x = from.x + (x - from.x) * s.t;
           p.y = from.y + (y - from.y) * s.t - Math.sin(Math.PI * s.t) * 45;
           chip(p).style.transform = `scale(${1 + Math.sin(Math.PI * s.t) * 0.25})`;
           place(p);
         },
-        onComplete: () => { chip(p).style.transform = ""; Sfx.step(i); res(); },
+        onComplete: () => {
+          chip(p).style.transform = "";
+          Sfx.step(dir > 0 ? i : 6 - (i % 7));
+          Particles.FX.dust(x, y);
+          res();
+        },
       });
     });
   }
 
   // ==================================================================
-  //  JUMP ANIMATIONS (one per element kind)
+  //  AMBIENT PARTICLES ON EVERY BOARD ELEMENT
+  // ==================================================================
+  function setupAmbientParticles() {
+    const F = Particles.FX;
+    Particles.clearEmitters();
+    for (const [fromS, j] of Object.entries(Board.JUMPS)) {
+      const from = +fromS;
+      const a = cell(from), b = cell(j.to);
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      switch (j.kind) {
+        case "rocket": {
+          Particles.addEmitter(a.x, a.y, 1.8, F.smoke);
+          const rx = a.x + (b.x - a.x) * 0.86 - Math.cos(ang) * 38, ry = a.y + (b.y - a.y) * 0.86 - Math.sin(ang) * 38;
+          Particles.addEmitter(rx, ry, 14, { ...F.fire, angle: ang + Math.PI, spread: 0.6, speed: [30, 90], size: [2, 5], life: [0.2, 0.4] });
+          break;
+        }
+        case "ufo":
+          Particles.addEmitter(a.x, a.y, 5, { ...F.green, angle: ang, spread: 0.3, speed: [40, 80], life: [1.2, 2.2], jitter: 20 });
+          break;
+        case "wormhole":
+          for (const p of [a, b]) Particles.addEmitter(p.x, p.y, 7, { ...F.purple, jitter: 48, speed: [0, 10], attract: { x: p.x, y: p.y, k: 70 }, swirl: 160, life: [0.8, 1.4] });
+          break;
+        case "comet": {
+          const back = Math.atan2(a.y - b.y, a.x - b.x);
+          Particles.addEmitter(b.x, b.y, 12, { ...F.ice, angle: back, spread: 0.8, speed: [20, 70], jitter: 8 });
+          break;
+        }
+        case "serpent":
+          Particles.addEmitter(a.x, a.y, 1.6, { ...F.pink, gravity: -20, speed: [5, 20], life: [1, 1.8], jitter: 15 });
+          break;
+        case "blackhole":
+          Particles.addEmitter(a.x, a.y, 14, { ...F.dark, colors: ["#ffb347", "#ff7b54", "#c77dff"], jitter: 75, speed: [0, 10], attract: { x: a.x, y: a.y, k: 150 }, swirl: 240, life: [0.8, 1.6], size: [2, 4] });
+          break;
+        case "asteroid":
+          Particles.addEmitter(a.x + 30, a.y - 30, 12, { ...F.fire, angle: -Math.PI / 4, spread: 0.5, speed: [40, 100], jitter: 8 });
+          break;
+        case "flare":
+          Particles.addEmitter(a.x, a.y, 9, { ...F.ember, jitter: 18, speed: [20, 60] });
+          break;
+      }
+    }
+    const g = cell(GOAL);
+    Particles.addEmitter(g.x, g.y, 6, { ...Particles.FX.gold, jitter: 45 });
+  }
+
+  // ==================================================================
+  //  JUMP ANIMATIONS (one per element kind) with particle trails
   // ==================================================================
   function tween(dur, ease, onT) {
     const s = { t: 0 };
@@ -263,209 +310,182 @@
       place(p);
     });
   }
+  const at = p => () => ({ x: p.x, y: p.y });
   function shake(power = 8) {
     gsap.fromTo("#board", { x: -power, y: power / 2 }, { x: 0, y: 0, duration: 0.6, ease: "elastic.out(1.2,0.25)" });
   }
-  function burst(x, y, color, n = 14) {
-    const layer = $("#fx");
-    for (let i = 0; i < n; i++) {
-      const d = document.createElement("div");
-      d.className = "spark";
-      d.style.background = color;
-      d.style.left = x / 10 + "%"; d.style.top = y / 10 + "%";
-      layer.appendChild(d);
-      const a = Math.random() * Math.PI * 2, r = 30 + Math.random() * 50;
-      gsap.to(d, {
-        x: Math.cos(a) * r * (layer.clientWidth / 1000), y: Math.sin(a) * r * (layer.clientWidth / 1000),
-        opacity: 0, scale: 0.3, duration: 0.6 + Math.random() * 0.4, ease: "power2.out", onComplete: () => d.remove(),
-      });
-    }
-  }
 
+  const F = () => Particles.FX;
   const ANIM = {
     async rocket(p, from, to) {
-      const a = Board.cellXY(from), b = Board.cellXY(to);
+      const a = cell(from), b = cell(to);
+      Particles.emit(a.x, a.y, { ...F().smoke, count: 18, speed: [20, 80], spread: Math.PI * 2 });
+      Particles.ring(a.x, a.y, "#ffd166", 90);
       p.el.classList.add("boosting");
       p.el.style.transform = `translate(-50%,-50%) rotate(${(Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 90}deg)`;
       Sfx.rocket();
+      const ang = Math.atan2(b.y - a.y, b.x - a.x) + Math.PI;
+      const stop = Particles.trail(at(p), { ...F().fire, angle: ang, spread: 0.5, speed: [60, 140] }, 90);
+      const stop2 = Particles.trail(at(p), { ...F().smoke, life: [0.8, 1.4] }, 12);
       await follow(p, from, 0.9 + Math.hypot(b.x - a.x, b.y - a.y) / 900, "power2.in",
         t => { chip(p).style.transform = `scale(${1 + Math.sin(Math.PI * t) * 0.45})`; });
+      stop(); stop2();
       p.el.classList.remove("boosting");
       p.el.style.transform = "translate(-50%,-50%)";
-      burst(b.x, b.y, "#ffd166");
+      Particles.emit(b.x, b.y, { ...F().fire, count: 40, speed: [80, 220] });
+      Particles.ring(b.x, b.y, "#ffd166", 110);
     },
-    async ufo(p, from) {
+    async ufo(p, from, to) {
       Sfx.ufo();
+      const a = cell(from);
+      Particles.emit(a.x, a.y, { ...F().green, count: 30, speed: [40, 120] });
+      const stop = Particles.trail(at(p), { ...F().green, speed: [10, 40], jitter: 25 }, 40);
       await follow(p, from, 1.8, "power1.inOut", t => {
         p.x += Math.sin(t * Math.PI * 6) * 8;
         chip(p).style.transform = `scale(${1 - Math.sin(Math.PI * t) * 0.35})`;
         chip(p).style.opacity = String(1 - Math.sin(Math.PI * t) * 0.4);
       });
+      stop();
       chip(p).style.opacity = "";
-      burst(p.x, p.y, "#3ee08f");
+      const b = cell(to);
+      Particles.emit(b.x, b.y, { ...F().green, count: 30, speed: [60, 160] });
+      Particles.ring(b.x, b.y, "#3ee08f", 90);
     },
     async wormhole(p, from, to) {
       Sfx.wormhole();
+      const a = cell(from), b = cell(to);
+      Particles.emit(a.x, a.y, { ...F().purple, count: 40, jitter: 70, speed: [0, 20], attract: { x: a.x, y: a.y, k: 260 }, swirl: 300 });
       await tween(0.6, "power2.in", t => { chip(p).style.transform = `rotate(${t * 540}deg) scale(${1 - t})`; });
-      await follow(p, from, 0.5, "power1.inOut");
+      Particles.ring(a.x, a.y, "#c77dff", 100, 0.5);
+      const stop = Particles.trail(at(p), { ...F().purple, speed: [5, 30] }, 70);
+      await follow(p, from, 0.55, "power1.inOut");
+      stop();
+      Particles.emit(b.x, b.y, { ...F().purple, count: 50, speed: [80, 220] });
+      Particles.ring(b.x, b.y, "#e0c3ff", 120, 0.7);
       await tween(0.6, "back.out(2)", t => { chip(p).style.transform = `rotate(${(1 - t) * -540}deg) scale(${t})`; });
-      const b = Board.cellXY(to);
-      burst(b.x, b.y, "#c77dff", 18);
     },
-    async comet(p, from) {
+    async comet(p, from, to) {
       Sfx.comet();
       p.el.classList.add("comet-ride");
+      const stop = Particles.trail(at(p), { ...F().ice, speed: [10, 50], life: [0.6, 1.2] }, 80);
       await follow(p, from, 1.4, "power2.inOut", t => { chip(p).style.transform = `scale(${1 + Math.sin(Math.PI * t) * 0.3})`; });
+      stop();
       p.el.classList.remove("comet-ride");
-      burst(p.x, p.y, "#7fe7ff");
+      const b = cell(to);
+      Particles.emit(b.x, b.y, { ...F().ice, count: 45, speed: [60, 200] });
+      Particles.ring(b.x, b.y, "#bdf3ff", 100);
     },
-    async serpent(p, from) {
+    async serpent(p, from, to) {
       Sfx.serpent();
+      const a = cell(from);
+      Particles.emit(a.x, a.y, { ...F().pink, count: 30, speed: [50, 140] });
+      const stop = Particles.trail(at(p), { ...F().pink, speed: [5, 30] }, 45);
       await follow(p, from, 1.5, "power1.inOut",
         t => { chip(p).style.transform = `rotate(${t * 720}deg) scale(${1 - Math.sin(Math.PI * t) * 0.3})`; });
+      stop();
+      const b = cell(to);
+      Particles.emit(b.x, b.y, { ...F().pink, count: 25, speed: [40, 120] });
     },
     async blackhole(p, from, to) {
       Sfx.blackhole();
-      const a = Board.cellXY(from);
+      const a = cell(from);
+      Particles.emit(a.x, a.y, { ...F().dark, colors: ["#ffb347", "#ff7b54", "#c77dff"], count: 70, jitter: 110, speed: [0, 10], attract: { x: a.x, y: a.y, k: 320 }, swirl: 380, life: [0.6, 1.2] });
       await tween(1.1, "power2.in", t => {
         const ang = t * Math.PI * 5, r = 40 * (1 - t);
         p.x = a.x + Math.cos(ang) * r; p.y = a.y + Math.sin(ang) * r;
         chip(p).style.transform = `rotate(${t * 900}deg) scale(${1 - t * 0.95})`;
         place(p);
       });
+      shake(5);
       chip(p).style.opacity = "0";
       await follow(p, from, 0.5, "power1.inOut");
       chip(p).style.opacity = "";
+      const b = cell(to);
+      Particles.ring(b.x, b.y, "#ff7b54", 110);
+      Particles.emit(b.x, b.y, { ...F().dark, count: 40, speed: [80, 200] });
       await tween(0.5, "back.out(2.5)", t => { chip(p).style.transform = `scale(${0.05 + t * 0.95})`; });
-      const b = Board.cellXY(to);
-      burst(b.x, b.y, "#ff7b54");
     },
     async asteroid(p, from, to) {
       Sfx.asteroid();
       shake(12);
-      burst(p.x, p.y, "#ff9e00", 20);
+      const a = cell(from);
+      Particles.emit(a.x, a.y, { ...F().fire, count: 60, speed: [100, 300] });
+      Particles.emit(a.x, a.y, { colors: ["#a7927e", "#6b5a4c"], count: 25, speed: [80, 220], size: [3, 7], gravity: 300, life: [0.6, 1.1] });
+      Particles.ring(a.x, a.y, "#ff9e00", 130);
+      const stop = Particles.trail(at(p), { ...F().fire, speed: [10, 40] }, 60);
       await follow(p, from, 1.2, "power1.in", t => { chip(p).style.transform = `rotate(${t * 1080}deg)`; });
-      shake(6);
-      const b = Board.cellXY(to);
-      burst(b.x, b.y, "#a7927e");
+      stop();
+      shake(7);
+      const b = cell(to);
+      Particles.emit(b.x, b.y, { colors: ["#a7927e", "#6b5a4c", "#ff9e00"], count: 35, speed: [60, 180], gravity: 260, life: [0.5, 1], size: [3, 6] });
+      Particles.ring(b.x, b.y, "#ffb347", 90);
     },
-    async flare(p, from) {
+    async flare(p, from, to) {
       Sfx.flare();
+      const a = cell(from);
+      Particles.emit(a.x, a.y, { ...F().ember, count: 60, speed: [80, 240] });
+      Particles.ring(a.x, a.y, "#ffd166", 120);
       p.el.classList.add("scorched");
+      const stop = Particles.trail(at(p), { ...F().ember, speed: [20, 70] }, 70);
       await follow(p, from, 1.4, "sine.inOut", t => { chip(p).style.transform = `scale(${1 + Math.sin(t * Math.PI * 8) * 0.08})`; });
+      stop();
       p.el.classList.remove("scorched");
+      const b = cell(to);
+      Particles.emit(b.x, b.y, { ...F().ember, count: 30, speed: [40, 140] });
     },
   };
 
   // ==================================================================
-  //  ENERGY & CRYSTALS
-  // ==================================================================
-  function floatText(x, y, text, color = "#ffd166") {
-    const d = document.createElement("div");
-    d.className = "float-text";
-    d.textContent = text;
-    d.style.color = color;
-    d.style.left = x / 10 + "%"; d.style.top = y / 10 + "%";
-    $("#fx").appendChild(d);
-    gsap.fromTo(d, { yPercent: -50, xPercent: -50, y: 0, opacity: 1, scale: 0.6 },
-      { y: -50, opacity: 0, scale: 1.1, duration: 1.3, ease: "power2.out", onComplete: () => d.remove() });
-  }
-
-  function gainEnergy(p, n, why) {
-    const before = p.energy;
-    p.energy = Math.max(0, Math.min(MAX_ENERGY, p.energy + n));
-    const delta = p.energy - before;
-    if (n > 0) floatText(p.x, p.y - 40, delta > 0 ? `+${delta}⚡` : "⚡ MAX", "#ffd166");
-    else if (delta < 0) floatText(p.x, p.y - 40, `${delta}⚡`, "#ff5d8f");
-    updatePanel();
-    return delta;
-  }
-
-  function clearCrystals() {
-    crystals.forEach(el => el.remove());
-    crystals.clear();
-  }
-
-  function spawnCrystal(instant = false) {
-    const free = [];
-    for (let n = 2; n < GOAL; n++) {
-      if (crystals.has(n) || Board.JUMPS[n] || players.some(p => p.pos === n)) continue;
-      free.push(n);
-    }
-    if (!free.length) return;
-    const n = free[Math.floor(Math.random() * free.length)];
-    const { x, y } = Board.cellXY(n);
-    const d = document.createElement("div");
-    d.className = "crystal";
-    d.style.left = (x + 26) / 10 + "%";
-    d.style.top = (y + 22) / 10 + "%";
-    d.innerHTML = "<span></span>";
-    $("#tokens").prepend(d);
-    crystals.set(n, d);
-    if (!instant) gsap.from(d, { scale: 0, rotation: 180, duration: 0.6, ease: "back.out(2)" });
-  }
-
-  function collectCrystal(p, n) {
-    const d = crystals.get(n);
-    if (!d) return false;
-    crystals.delete(n);
-    Sfx.crystal();
-    gsap.to(d, { scale: 2, opacity: 0, duration: 0.4, onComplete: () => d.remove() });
-    const { x, y } = Board.cellXY(n);
-    burst(x + 26, y + 22, "#7fe7ff", 8);
-    gainEnergy(p, 1);
-    setTimeout(() => spawnCrystal(), 900);
-    return true;
-  }
-
-  // ==================================================================
   //  TURN FLOW
   // ==================================================================
-  function beginTurn(extra = false) {
-    turn = { roll: 0, adjust: 0, paid: [], rerolled: false, extra };
+  async function beginTurn() {
+    const token = ++turnToken;
     phase = "roll";
+    const p = cur();
     layoutTokens();
     updatePanel();
-    const p = cur();
-    if (p.cpu) setTimeout(cpuPreRoll, 750);
-    else if (!extra) $("#roll-btn").focus({ preventScroll: true });
-  }
-
-  async function throwDice() {
-    phase = "rolling";
-    refreshControls();
-    hideGhost();
-    let v = 1 + Math.floor(Math.random() * 6);
-    if (forcedRoll) { v = forcedRoll; forcedRoll = null; renderTestDice(); }
-    const res = $("#dice-result");
-    res.textContent = "…";
-    Sfx.whoosh();
-    await Dice3D.roll(v, { onBounce: s => Sfx.clack(s) });
-    res.textContent = v;
-    gsap.fromTo(res, { scale: 1.6, color: "#ffd166" }, { scale: 1, color: "#e8ecff", duration: 0.5, ease: "back.out(3)" });
-    return v;
+    if (!extraRoll) Sfx.turn();
+    Particles.ring(p.x, p.y, p.color, 70, 0.8);
+    // cinematic swoop: zoom in on whose turn it is, then pull back for the dice
+    Camera.focus(p.x, p.y, 2.1);
+    await sleep(950);
+    if (token !== turnToken || phase !== "roll") return;
+    Camera.overview();
+    if (p.cpu) {
+      await sleep(600);
+      if (token === turnToken && phase === "roll") onRoll();
+    } else {
+      $("#roll-btn").focus({ preventScroll: true });
+    }
   }
 
   async function onRoll() {
     if (phase !== "roll") return;
+    phase = "moving";
+    turnToken++;
     Sfx.unlock();
-    turn.roll = await throwDice();
-    turn.adjust = 0;
-    turn.paid = [];
-    enterDecide();
-  }
-
-  function enterDecide() {
-    phase = "decide";
-    showPreview();
+    Music.start();
     refreshControls();
-    const p = cur();
-    if (p.cpu) { setTimeout(cpuDecide, 900); return; }
-    // nothing to decide? launch automatically
-    if (p.energy < cost("thrust") && (turn.rerolled || p.energy < cost("reroll"))) {
-      $("#preview").insertAdjacentHTML("beforeend", `<div class="pv-note">No fuel for thrusters, launching…</div>`);
-      setTimeout(() => { if (phase === "decide" && cur() === p) go(); }, 1100);
+    Camera.overview();
+    // on phones the panel sits below the board: bring the board back into view
+    if (window.innerWidth < 900) {
+      const r = $("#board-wrap").getBoundingClientRect();
+      if (r.top < -40 || r.bottom > window.innerHeight + 40) $("#board-wrap").scrollIntoView({ behavior: "smooth", block: "start" });
     }
+
+    const p = cur();
+    let value = 1 + Math.floor(Math.random() * 6);
+    if (forcedRoll) { value = forcedRoll; forcedRoll = null; renderTestDice(); }
+    const res = $("#dice-result");
+    res.textContent = "…";
+    Sfx.whoosh();
+    await Dice3D.roll(value, { onBounce: s => Sfx.clack(s) });
+    res.textContent = value;
+    gsap.fromTo(res, { scale: 1.6, color: "#ffd166" }, { scale: 1, color: "#e8ecff", duration: 0.5, ease: "back.out(3)" });
+    if (value === 6) Particles.emit(500, 500, { ...Particles.FX.gold, count: 30, speed: [80, 200] });
+    await sleep(350);
+    Dice3D.hide();
+    await move(p, value);
   }
 
   /** Steps along the board, bouncing back off square 100. */
@@ -480,265 +500,194 @@
     return { path, final: pos, bounced };
   }
 
-  // ---------- abilities ----------
-  function thrust(dir) {
-    if (phase !== "decide") return;
-    const p = cur();
-    const next = turn.adjust + dir;
-    if (Math.abs(next) > MAX_THRUST || turn.roll + next < 1) return Sfx.error();
-    if (Math.abs(next) > Math.abs(turn.adjust)) {          // spending
-      const c = cost("thrust");
-      if (p.energy < c) return Sfx.error();
-      p.energy -= c;
-      turn.paid.push(c);
-    } else {                                                // undoing: refund
-      p.energy += turn.paid.pop() || 0;
-    }
-    turn.adjust = next;
-    Sfx.thrust(dir);
-    gsap.fromTo(chip(p), { y: dir * -6 }, { y: 0, duration: 0.3, ease: "back.out(3)" });
-    showPreview();
-    updatePanel();
+  function showGhost(n, kind) {
+    const g = $("#ghost");
+    const { x, y } = cell(n);
+    g.className = `ghost show ${kind}`;
+    g.style.left = x / 10 + "%";
+    g.style.top = y / 10 + "%";
   }
+  const hideGhost = () => { $("#ghost").className = "ghost"; };
 
-  function activateShield() {
-    const p = cur();
-    if (phase !== "roll" || p.shield || p.energy < cost("shield")) return Sfx.error();
-    p.energy -= cost("shield");
-    p.shield = true;
-    Sfx.shield();
-    log(`${p.name} raised a 🛡️ shield.`, p.color);
-    layoutTokens();
-    updatePanel();
-  }
-
-  async function reroll() {
-    const p = cur();
-    if (phase !== "decide" || turn.rerolled || p.energy + refundable() < cost("reroll")) return Sfx.error();
-    p.energy += refundable();       // cancel any thrust first
-    turn.paid = []; turn.adjust = 0;
-    p.energy -= cost("reroll");
-    turn.rerolled = true;
-    updatePanel();
-    log(`${p.name} spent fuel to reroll.`, p.color);
-    turn.roll = await throwDice();
-    enterDecide();
-  }
-  const refundable = () => turn.paid.reduce((a, b) => a + b, 0);
-
-  // ---------- movement & resolution ----------
-  async function go() {
-    if (phase !== "decide") return;
-    phase = "moving";
-    hideGhost();
-    refreshControls();
-    Dice3D.hide();
-
-    const p = cur();
-    const steps = turn.roll + turn.adjust;
+  async function move(p, value) {
     const start = p.pos;
-    const { path, final, bounced } = computePath(p.pos, steps);
+    const { path, final, bounced } = computePath(p.pos, value);
+
+    // preview where we're heading
+    const j = Board.JUMPS[final];
+    showGhost(final, final === GOAL ? "win" : j ? (Board.KINDS[j.kind].up ? "up" : "down") : "plain");
+    Camera.follow(at(p), 2);
 
     p.el.classList.add("moving");
     gsap.to(p, { ox: 0, oy: 0, duration: 0.15, onUpdate: () => place(p) });
+    let dir = 1;
     for (let i = 0; i < path.length; i++) {
-      await hopTo(p, path[i], i);
-      collectCrystal(p, path[i]);
+      if (i > 0 && path[i] < path[i - 1]) dir = -1;
+      await hopTo(p, path[i], i, dir);
+      if (path[i] === GOAL && i < path.length - 1) {
+        Sfx.bounce();
+        Particles.ring(cell(GOAL).x, cell(GOAL).y, "#36d1ff", 80, 0.5);
+      }
     }
+    hideGhost();
     p.pos = final;
 
-    let msg = `${p.name} rolled ${turn.roll}`;
-    if (turn.adjust) msg += ` (thrust ${turn.adjust > 0 ? "+" : ""}${turn.adjust})`;
-    msg += `: ${start} → ${final}`;
-    if (bounced) {
-      Sfx.bounce();
-      await toast("🪃 Gravity slingshot!", `Overshot Andromeda, bounced back to ${final}`, "bounce");
-      msg += " (bounced)";
-    }
-    log(msg, p.color);
+    log(`${p.name} rolled ${value}: ${start} → ${final}${bounced ? " (bounced)" : ""}`, p.color);
+    if (bounced) await toast("🪃 Gravity slingshot!", `Overshot Andromeda, bounced back to ${final}`, "bounce");
 
     await resolveLanding(p, true);
     p.el.classList.remove("moving");
     layoutTokens();
     updatePanel();
+    updateIntensity();
 
     if (p.pos === GOAL) return win(p);
 
-    if (turn.roll === 6) {
+    if (value === 6) {
+      Sfx.afterburner();
+      Particles.emit(p.x, p.y, { ...Particles.FX.fire, count: 40, speed: [60, 180] });
       await toast("🔥 Afterburner!", `${p.name} rolled a 6: roll again!`, "up");
       log(`🔥 ${p.name} fires the afterburner for another roll.`, p.color);
-      return beginTurn(true);
+      extraRoll = true;
+      return beginTurn();
     }
+    extraRoll = false;
     nextPlayer();
   }
 
   async function resolveLanding(p, isMover) {
-    // 1) Collisions: the mover knocks rivals on the same square back
+    // Collisions: the mover knocks rivals on the same square back
     if (isMover && p.pos !== GOAL) {
       const rivals = players.filter(o => o !== p && o.pos === p.pos);
       for (const r of rivals) {
-        if (r.shield) {
-          r.shield = false;
-          Sfx.shield();
-          layoutTokens();
-          await toast("🛡️ Shield held!", `${r.name} deflected the collision`, "shield");
-          log(`${r.name}'s shield absorbed a collision.`, r.color);
-          continue;
-        }
+        Camera.focus(r.x, r.y, 2.3);
         Sfx.bump();
-        shake(8);
-        burst(r.x, r.y, p.color, 16);
+        shake(9);
+        Particles.emit(r.x, r.y, { colors: [p.color, r.color, "#ffffff"], count: 45, speed: [80, 260], size: [2, 5], shape: "streak" });
+        Particles.ring(r.x, r.y, "#ffffff", 90, 0.5);
         toast("💥 Collision!", `${p.name} knocks ${r.name} back ${BUMP_BACK}`, "down");
         log(`💥 ${p.name} rammed ${r.name} back ${BUMP_BACK} squares.`, p.color);
         r.el.classList.add("moving");
+        Camera.follow(at(r), 2.1);
         const back = Math.max(1, r.pos - BUMP_BACK);
-        for (let n = r.pos - 1, i = 0; n >= back; n--, i++) await hopTo(r, n, i);
+        for (let n = r.pos - 1, i = 0; n >= back; n--, i++) await hopTo(r, n, i, -1);
         r.pos = back;
-        collectCrystal(r, back);
-        await resolveLanding(r, false);
+        await resolveJump(r);
         r.el.classList.remove("moving");
       }
     }
+    await resolveJump(p);
+  }
 
-    // 2) Boosts & hazards
+  async function resolveJump(p) {
     const j = Board.JUMPS[p.pos];
     if (!j) return;
     const k = Board.KINDS[j.kind];
     const grp = document.getElementById(`jump-${p.pos}`);
-
-    if (!k.up && p.shield) {
-      p.shield = false;
-      Sfx.shield();
-      layoutTokens();
-      burst(p.x, p.y, "#7fe7ff", 18);
-      await toast("🛡️ Shield held!", `${p.name} deflected the ${k.name.toLowerCase()}`, "shield");
-      log(`🛡️ ${p.name}'s shield blocked a ${k.name.toLowerCase()} at ${p.pos}.`, p.color);
-      return;
-    }
-
-    grp && grp.classList.add("active");
-    toast(`${k.icon} ${k.title}`, `${p.pos} → ${j.to}`, k.up ? "up" : "down");
     const from = p.pos;
+    Camera.fit(cell(from), cell(j.to), 200);
+    grp && grp.classList.add("active");
+    toast(`${k.icon} ${k.title}`, `${from} → ${j.to}`, k.up ? "up" : "down");
     await ANIM[j.kind](p, from, j.to);
     grp && grp.classList.remove("active");
     p.pos = j.to;
     chip(p).style.transform = "";
     log(`${k.icon} ${p.name} ${k.verb} ${j.to}.`, p.color);
-    if (!k.up) gainEnergy(p, 1);            // salvage fuel from the wreck
-    collectCrystal(p, p.pos);
+    Camera.focus(p.x, p.y, 2.1);
+    await sleep(350);
   }
 
   async function nextPlayer() {
     current = (current + 1) % players.length;
     if (current === 0) {
       round++;
-      ionStorm = false;
-      if ((round - 1) % EVENT_EVERY === 0) await cosmicEvent();
+      if ((round - 1) % EVENT_EVERY === 0) {
+        await cosmicEvent();
+        const winner = players.find(p => p.pos === GOAL);
+        if (winner) return win(winner);
+      }
     }
     beginTurn();
   }
 
+  function updateIntensity() {
+    Music.setIntensity(players.some(p => p.pos >= FINAL_STRETCH) ? 2 : 1);
+  }
+
+  // ==================================================================
+  //  COSMIC EVENTS (move players, then resolve what they land on)
+  // ==================================================================
   async function cosmicEvent() {
-    const ev = EVENTS[Math.floor(Math.random() * EVENTS.length)];
+    let pool = EVENTS;
+    const spread = new Set(players.map(p => p.pos)).size > 1;
+    if (!spread) pool = EVENTS.filter(e => e.id !== "swap");
+    const ev = pool[Math.floor(Math.random() * pool.length)];
     phase = "moving";
     refreshControls();
+    Camera.overview();
     Sfx.event();
     $("#board").classList.add("event-flash");
     setTimeout(() => $("#board").classList.remove("event-flash"), 1200);
+    // starfall across the whole board
+    for (let i = 0; i < 40; i++) {
+      Particles.emit(Math.random() * 1000, -20, { colors: ["#e0c3ff", "#ffffff", "#7fe7ff"], count: 1, angle: Math.PI * 0.62, spread: 0.1, speed: [500, 800], life: [1.2, 1.8], shape: "streak", size: [3, 5], drag: 1 });
+    }
     log(`🌌 Cosmic event: ${ev.title}! ${ev.text}.`);
     await toast(`${ev.icon} ${ev.title}`, ev.text, "event", 1.6);
-    if (ev.id === "wind") players.forEach(p => gainEnergy(p, 1));
-    if (ev.id === "drain") players.forEach(p => gainEnergy(p, -1));
-    if (ev.id === "rain") for (let i = 0; i < 4; i++) setTimeout(() => spawnCrystal(), i * 150);
-    if (ev.id === "ion") ionStorm = true;
-    await sleep(500);
-  }
 
-  // ==================================================================
-  //  LANDING PREVIEW
-  // ==================================================================
-  function describeLanding(p, steps) {
-    const { final, path, bounced } = computePath(p.pos, steps);
-    const crystalsOnPath = path.filter(n => crystals.has(n)).length;
-    const rivals = players.filter(o => o !== p && o.pos === final && final !== GOAL);
-    const j = Board.JUMPS[final];
-    let kind = "plain", text = `Lands on <b>${final}</b>`, end = final;
-    if (final === GOAL) { kind = "win"; text = `🌌 <b>ANDROMEDA!</b> Mission complete`; }
-    else if (j) {
-      const k = Board.KINDS[j.kind];
-      if (!k.up && p.shield) { kind = "shield"; text = `${k.icon} ${k.name} at <b>${final}</b>, 🛡️ shield will block it`; }
-      else { kind = k.up ? "up" : "down"; end = j.to; text = `${k.icon} ${k.name}: <b>${final} → ${j.to}</b>`; }
+    const moveBy = async (p, delta) => {
+      if (!delta) return;
+      p.el.classList.add("moving");
+      if (delta > 0) {
+        const { path, final } = computePath(p.pos, delta);
+        for (let i = 0; i < path.length; i++) await hopTo(p, path[i], i);
+        p.pos = final;
+      } else {
+        const back = Math.max(1, p.pos + delta);
+        for (let n = p.pos - 1, i = 0; n >= back; n--, i++) await hopTo(p, n, i, -1);
+        p.pos = back;
+      }
+      await resolveJump(p);
+      p.el.classList.remove("moving");
+      Camera.overview();
+    };
+
+    if (ev.id === "wind") {
+      for (const p of players) Particles.emit(p.x - 60, p.y, { ...Particles.FX.ice, count: 20, angle: 0, spread: 0.4, speed: [150, 300] });
+      for (const p of players) await moveBy(p, 2);
+    } else if (ev.id === "gravity") {
+      for (const p of players) Particles.ring(p.x, p.y, "#7b2ff7", 70, 0.7);
+      for (const p of players) await moveBy(p, -2);
+    } else if (ev.id === "meteor") {
+      const v = players[Math.floor(Math.random() * players.length)];
+      Camera.focus(v.x, v.y, 2.2);
+      for (let i = 0; i < 12; i++) {
+        setTimeout(() => Particles.emit(v.x + 200, v.y - 260, { ...Particles.FX.fire, count: 3, angle: Math.atan2(260, -200), spread: 0.15, speed: [500, 600], life: [0.45, 0.5], shape: "streak", size: [4, 7], drag: 1 }), i * 60);
+      }
+      await sleep(700);
+      Sfx.asteroid();
+      shake(10);
+      Particles.emit(v.x, v.y, { ...Particles.FX.fire, count: 50, speed: [100, 260] });
+      log(`🌠 ${v.name} was hit by the meteor shower.`, v.color);
+      await moveBy(v, -3);
+    } else if (ev.id === "swap") {
+      const sorted = [...players].sort((a, b) => b.pos - a.pos);
+      const lead = sorted[0], last = sorted[sorted.length - 1];
+      Sfx.wormhole();
+      for (const p of [lead, last]) Particles.emit(p.x, p.y, { ...Particles.FX.purple, count: 40, jitter: 60, attract: { x: p.x, y: p.y, k: 250 }, swirl: 300, speed: [0, 10] });
+      await Promise.all([lead, last].map(p => tween(0.5, "power2.in", t => { chip(p).style.transform = `rotate(${t * 360}deg) scale(${1 - t})`; })));
+      [lead.pos, last.pos] = [last.pos, lead.pos];
+      layoutTokens(true);
+      for (const p of [lead, last]) { Particles.emit(p.x, p.y, { ...Particles.FX.purple, count: 40, speed: [80, 200] }); Particles.ring(p.x, p.y, "#c77dff", 90); }
+      await Promise.all([lead, last].map(p => tween(0.5, "back.out(2)", t => { chip(p).style.transform = `scale(${t})`; })));
+      log(`🔀 ${lead.name} and ${last.name} swapped places.`);
+      for (const p of [lead, last]) { chip(p).style.transform = ""; await resolveJump(p); }
     }
-    const extras = [];
-    if (bounced) extras.push("🪃 bounces off 100");
-    if (crystalsOnPath) extras.push(`💎 +${crystalsOnPath}⚡`);
-    if (rivals.length) extras.push(`💥 rams ${rivals.map(r => r.name).join(", ")}`);
-    if (turn.roll === 6) extras.push("🔥 extra roll");
-    return { final, end, kind, text, extras, crystalsOnPath, rivals };
-  }
-
-  function showPreview() {
-    const p = cur();
-    const steps = turn.roll + turn.adjust;
-    const d = describeLanding(p, steps);
-    const g = $("#ghost");
-    const { x, y } = Board.cellXY(d.final);
-    g.className = `ghost show ${d.kind}`;
-    g.style.left = x / 10 + "%";
-    g.style.top = y / 10 + "%";
-    const adj = turn.adjust ? ` <span class="pv-adj">${turn.roll} ${turn.adjust > 0 ? "+" : "−"} ${Math.abs(turn.adjust)} = ${steps}</span>` : "";
-    $("#preview").className = `preview ${d.kind}`;
-    $("#preview").innerHTML = `<div class="pv-main">${d.text}${adj}</div>${d.extras.length ? `<div class="pv-extras">${d.extras.join(" · ")}</div>` : ""}`;
-  }
-
-  function hideGhost() {
-    $("#ghost").className = "ghost";
-    $("#preview").className = "preview";
-    $("#preview").innerHTML = "";
-  }
-
-  // ==================================================================
-  //  CPU PILOT
-  // ==================================================================
-  function cpuPreRoll() {
-    if (phase !== "roll" || !cur().cpu) return;
-    const p = cur();
-    const wantShield = !p.shield && p.energy >= cost("shield") &&
-      (p.energy >= 4 || (p.pos > 40 && p.energy >= cost("shield") + 1 && Math.random() < 0.5) || ionStorm);
-    if (wantShield) { activateShield(); setTimeout(onRoll, 700); }
-    else onRoll();
-  }
-
-  function scoreOption(p, steps) {
-    const d = describeLanding(p, steps);
-    let s = d.end;
-    if (d.kind === "win") s += 1000;
-    s += d.crystalsOnPath * 1.5 + d.rivals.length * 2;
-    return s;
-  }
-
-  async function cpuDecide() {
-    if (phase !== "decide" || !cur().cpu) return;
-    const p = cur();
-    const c = cost("thrust");
-    let best = { adj: 0, score: scoreOption(p, turn.roll) };
-    for (let adj = -MAX_THRUST; adj <= MAX_THRUST; adj++) {
-      if (!adj || turn.roll + adj < 1 || Math.abs(adj) * c > p.energy) continue;
-      const sc = scoreOption(p, turn.roll + adj) - Math.abs(adj) * c * 1.5;
-      if (sc > best.score) best = { adj, score: sc };
-    }
-    // stuck with a bad landing? spend fuel on a reroll
-    const baseline = p.pos + 3.5;
-    if (best.score < baseline - 8 && !turn.rerolled && p.energy >= cost("reroll")) {
-      await sleep(400);
-      return reroll();
-    }
-    for (let i = 0; i < Math.abs(best.adj); i++) {
-      await sleep(450);
-      thrust(Math.sign(best.adj));
-    }
-    await sleep(650);
-    go();
+    layoutTokens();
+    updatePanel();
+    updateIntensity();
+    Camera.overview();
+    await sleep(400);
   }
 
   // ==================================================================
@@ -746,19 +695,31 @@
   // ==================================================================
   function win(p) {
     phase = "over";
+    turnToken++;
     layoutTokens();
     refreshControls();
     log(`🏆 ${p.name} reached the Andromeda Galaxy in round ${round}!`, p.color);
+    const g = cell(GOAL);
+    Camera.focus(g.x, g.y, 3);
+    Music.duck(4);
+    Music.setIntensity(0);
     Sfx.win();
+    for (let i = 0; i < 5; i++) {
+      setTimeout(() => {
+        Particles.ring(g.x, g.y, ["#ffd166", "#c77dff", "#36d1ff"][i % 3], 140 + i * 40, 0.9);
+        Particles.emit(g.x, g.y, { ...Particles.FX.gold, count: 50, speed: [100, 320] });
+      }, i * 280);
+    }
     celebrate(p.color);
     setTimeout(() => {
+      Camera.overview();
       const av = $("#win-avatar");
       av.textContent = p.emoji;
       av.style.setProperty("--pc", p.color);
       $("#win-text").innerHTML = `<strong>${escapeHtml(p.name)}</strong> warped all the way to the <strong>Andromeda Galaxy</strong>, 2.5 million light-years from home, in round ${round}!`;
       $("#win-modal").classList.add("open");
       $("#again-btn").focus();
-    }, 900);
+    }, 2000);
   }
 
   function celebrate(color) {
@@ -776,43 +737,11 @@
   // ==================================================================
   //  PANEL / UI
   // ==================================================================
-  function energyPips(n) {
-    let s = "";
-    for (let i = 0; i < MAX_ENERGY; i++) s += `<i class="${i < n ? "on" : ""}"></i>`;
-    return `<span class="pips" aria-label="${n} energy">${s}</span>`;
-  }
-
   function refreshControls() {
     const p = cur();
-    const human = p && !p.cpu;
     const rb = $("#roll-btn");
-    if (phase === "decide") {
-      const d = describeLanding(p, turn.roll + turn.adjust);
-      rb.innerHTML = `<span>Launch → ${d.final}</span><kbd>Space</kbd>`;
-      rb.classList.add("go");
-    } else {
-      rb.innerHTML = `<span>${turn && turn.extra ? "Roll again 🔥" : "Roll the dice"}</span><kbd>Space</kbd>`;
-      rb.classList.remove("go");
-    }
-    rb.disabled = !human || !(phase === "roll" || phase === "decide");
-
-    const set = (id, ok, c) => {
-      const b = $(id);
-      b.disabled = !human || !ok;
-      const tag = b.querySelector(".ac");
-      if (tag) tag.textContent = c === 0 ? "FREE" : `${c}⚡`;
-    };
-    set("#shield-btn", phase === "roll" && p && !p.shield && p.energy >= cost("shield"), cost("shield"));
-    const canThrust = dir => {
-      if (phase !== "decide") return false;
-      const next = turn.adjust + dir;
-      if (Math.abs(next) > MAX_THRUST || turn.roll + next < 1) return false;
-      return Math.abs(next) < Math.abs(turn.adjust) || p.energy >= cost("thrust");
-    };
-    set("#minus-btn", canThrust(-1), cost("thrust"));
-    set("#plus-btn", canThrust(1), cost("thrust"));
-    set("#reroll-btn", phase === "decide" && !turn.rerolled && p.energy + refundable() >= cost("reroll"), cost("reroll"));
-    $("#actions").classList.toggle("ion", ionStorm);
+    rb.innerHTML = `<span>${extraRoll && phase === "roll" ? "Roll again 🔥" : p && p.cpu && phase === "roll" ? "CPU is rolling…" : "Roll the dice"}</span><kbd>Space</kbd>`;
+    rb.disabled = !p || p.cpu || phase !== "roll";
   }
 
   function updatePanel() {
@@ -820,18 +749,16 @@
     const p = cur();
     const tp = $("#turn-player");
     tp.style.setProperty("--pc", p.color);
-    const status = phase === "over" ? "Winner!" :
-      p.cpu ? "🤖 CPU pilot is thinking…" : `Square ${p.pos} · ${GOAL - p.pos} to go`;
+    const status = phase === "over" ? "Winner!" : `Square ${p.pos} · ${GOAL - p.pos} to go`;
     tp.innerHTML = `
       <div class="crew-badge" style="--pc:${p.color}">${p.emoji}</div>
       <div style="min-width:0">
-        <div class="tp-name">${escapeHtml(p.name)} ${p.shield ? "🛡️" : ""}</div>
+        <div class="tp-name">${escapeHtml(p.name)} ${p.cpu ? '<span class="tag">CPU</span>' : ""}</div>
         <div class="tp-sub">${status}</div>
-      </div>
-      <div class="tp-energy">${energyPips(p.energy)}</div>`;
+      </div>`;
 
     const nextEvent = EVENT_EVERY - ((round - 1) % EVENT_EVERY);
-    $("#round-info").innerHTML = `Round <b>${round}</b> · ${ionStorm ? `<span class="ion-tag">⚡ ION STORM: abilities free</span>` : `cosmic event in ${nextEvent} round${nextEvent > 1 ? "s" : ""}`}`;
+    $("#round-info").innerHTML = `Round <b>${round}</b> · cosmic event in ${nextEvent} round${nextEvent > 1 ? "s" : ""}`;
 
     const list = $("#player-list");
     list.innerHTML = "";
@@ -840,14 +767,13 @@
       const li = document.createElement("li");
       li.style.setProperty("--pc", pl.color);
       if (i === current && phase !== "over") li.classList.add("current");
-      const rank = ranked.indexOf(pl) + 1;
       li.innerHTML = `
         <div class="crew-badge" style="--pc:${pl.color}">${pl.emoji}</div>
         <div style="min-width:0">
-          <div class="pl-name">${escapeHtml(pl.name)} ${pl.cpu ? '<span class="tag">CPU</span>' : ""} ${pl.shield ? "🛡️" : ""}</div>
-          <div class="pl-meta">${energyPips(pl.energy)}<div class="pl-bar"><span style="width:${pl.pos}%"></span></div></div>
+          <div class="pl-name">${escapeHtml(pl.name)} ${pl.cpu ? '<span class="tag">CPU</span>' : ""}</div>
+          <div class="pl-bar"><span style="width:${pl.pos}%"></span></div>
         </div>
-        <div class="pl-pos"><small>#${rank}</small>${pl.pos}</div>`;
+        <div class="pl-pos"><small>#${ranked.indexOf(pl) + 1}</small>${pl.pos}</div>`;
       list.appendChild(li);
     });
     refreshControls();
@@ -881,7 +807,7 @@
 
   function renderLegend() {
     const ups = [], downs = [];
-    for (const [id, k] of Object.entries(Board.KINDS)) (k.up ? ups : downs).push(`<li><span>${k.icon}</span>${k.name}</li>`);
+    for (const k of Object.values(Board.KINDS)) (k.up ? ups : downs).push(`<li><span>${k.icon}</span>${k.name}</li>`);
     $("#legend").innerHTML = `
       <div><h4 class="up">Boosts ▲</h4><ul>${ups.join("")}</ul></div>
       <div><h4 class="down">Hazards ▼</h4><ul>${downs.join("")}</ul></div>`;
@@ -898,7 +824,7 @@
       b.type = "button";
       b.textContent = v;
       b.className = forcedRoll === v ? "on" : "";
-      b.onclick = () => { forcedRoll = forcedRoll === v ? null : v; renderTestDice(); };
+      b.onclick = () => { forcedRoll = forcedRoll === v ? null : v; Sfx.click(); renderTestDice(); };
       box.appendChild(b);
     }
   }
@@ -910,6 +836,8 @@
     p.pos = n;
     layoutTokens();
     updatePanel();
+    updateIntensity();
+    Particles.ring(cell(n).x, cell(n).y, "#ffd166", 80);
     log(`🧪 Test: ${p.name} teleported to ${n}.`, p.color);
   }
 
@@ -919,6 +847,9 @@
   function init() {
     Board.build($("#grid"), $("#paths"));
     Dice3D.init($("#dice-stage"));
+    Camera.init($("#camera"), $("#board"));
+    Particles.init($("#particles"));
+    setupAmbientParticles();
     renderCountPicker();
     renderRoster();
     renderLegend();
@@ -926,41 +857,52 @@
 
     const tt = $("#test-toggle");
     tt.checked = testMode;
-    tt.onchange = () => { testMode = tt.checked; };
+    tt.onchange = () => { testMode = tt.checked; Sfx.click(); };
+
+    // browsers only allow audio after a user gesture
+    const kick = () => { Sfx.unlock(); Music.start(); };
+    document.addEventListener("pointerdown", kick, { once: true });
+    document.addEventListener("keydown", kick, { once: true });
+
+    // button click sounds
+    document.addEventListener("click", e => { if (e.target.closest(".btn, .icon-btn, .cpu-toggle, .count-picker button")) Sfx.click(); });
 
     $("#launch-btn").onclick = startGame;
-    $("#roll-btn").onclick = () => (phase === "decide" ? go() : onRoll());
-    $("#shield-btn").onclick = activateShield;
-    $("#minus-btn").onclick = () => thrust(-1);
-    $("#plus-btn").onclick = () => thrust(1);
-    $("#reroll-btn").onclick = reroll;
+    $("#roll-btn").onclick = onRoll;
     $("#again-btn").onclick = startGame;
     $("#newcrew-btn").onclick = backToSetup;
     $("#restart-btn").onclick = () => {
       if (phase === "over" || confirm("Abort this mission and return to crew setup?")) backToSetup();
     };
-    $("#mute-btn").onclick = e => { e.currentTarget.textContent = Sfx.toggle() ? "🔇" : "🔊"; };
+    $("#mute-btn").onclick = e => { e.currentTarget.textContent = Sfx.toggle() ? "🔇" : "🔊"; e.currentTarget.classList.toggle("off", Sfx.muted); };
+    $("#music-btn").onclick = e => { const on = Music.toggle(); e.currentTarget.classList.toggle("off", !on); e.currentTarget.title = on ? "Music on" : "Music off"; };
     $("#test-go").onclick = testTeleport;
-    $("#test-energy").onclick = () => { if (players.length) gainEnergy(cur(), 1); };
+    $("#zoom-in").onclick = () => Camera.zoomAt(1.4);
+    $("#zoom-out").onclick = () => Camera.zoomAt(1 / 1.4);
+    $("#zoom-reset").onclick = () => Camera.reset();
+    $("#cam-auto").onclick = e => {
+      const on = !Camera.auto;
+      Camera.setAuto(on);
+      if (!on) Camera.reset();
+      e.currentTarget.classList.toggle("off", !on);
+      e.currentTarget.title = on ? "Cinematic camera: on" : "Cinematic camera: off";
+    };
 
     document.addEventListener("keydown", e => {
       if (!$("#game").classList.contains("active") || $("#win-modal").classList.contains("open")) return;
       if (e.target.matches("input, textarea")) return;
-      if (!players.length || cur().cpu) return;
-      const k = e.key.toLowerCase();
       if (e.code === "Space" || e.key === "Enter") {
         const ae = document.activeElement;
         if (ae && ae.tagName === "BUTTON" && ae !== $("#roll-btn")) return;
         e.preventDefault();
-        phase === "decide" ? go() : onRoll();
-      } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); thrust(-1); }
-      else if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); thrust(1); }
-      else if (k === "s") activateShield();
-      else if (k === "r") reroll();
+        if (players.length && !cur().cpu) onRoll();
+      } else if (e.key === "+" || e.key === "=") Camera.zoomAt(1.3);
+      else if (e.key === "-") Camera.zoomAt(1 / 1.3);
+      else if (e.key === "0") Camera.reset();
     });
 
-    // expose a tiny hook for automated tests
-    window.__aq = { get state() { return { phase, current, round, players: players.map(p => ({ pos: p.pos, energy: p.energy, shield: p.shield })) }; } };
+    // tiny hook for automated tests
+    window.__aq = { get state() { return { phase, current, round, players: players.map(p => ({ pos: p.pos })) }; } };
   }
 
   init();
