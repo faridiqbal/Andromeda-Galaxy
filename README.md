@@ -5,7 +5,7 @@ A space-themed take on snakes & ladders for 1–5 players, built with plain HTML
 Square 100 is the **Andromeda Galaxy**. Land on it exactly to win. Overshoot it and you bounce back for the remaining pips (97 + 6 → 98, 99, 100, 99, 98, **97**).
 
 ## Board elements
-Every game deals a **random layout** with the same number of each element (3 rockets, 2 UFO beams, 2 comets, 1 wormhole, 3 ion storms, 2 black holes, 2 fireball asteroids, 2 solar flares). The layout always follows the rules: boosts go up and hazards go down, nothing starts or ends on 1 or 100, no square holds more than one start or end (so elements never chain), and each element moves you at least one row.
+Every game deals a **random layout** with the same number of each element (3 rockets, 2 UFO beams, 2 comets, 1 wormhole, 3 ion storms, 2 black holes, 2 fireball asteroids, 2 solar flares). Boards are also **balanced**: each third of the board (2–33, 34–66, 67–99) has 2–4 boosts and 2–4 hazards. The layout always follows the rules: boosts go up and hazards go down, nothing starts or ends on 1 or 100, no square holds more than one start or end (so elements never chain), and each element moves you at least one row.
 
 | Boosts ▲ | Hazards ▼ |
 |---|---|
@@ -19,6 +19,10 @@ Every game deals a **random layout** with the same number of each element (3 roc
 - **💥 Collisions:** landing on a rival knocks them back 2 squares.
 - **🔥 Afterburner:** rolling a 6 gives another roll.
 - **🌌 Cosmic events** every 3 rounds: Solar Wind (+2 for everyone), Gravity Wave (−2 for everyone), Warp Rift (leader and last place swap), Meteor Shower (one ship −3), Galactic Shift (every element moves to a new random position, never under a piece).
+- **🎲 Hold to throw:** hold the roll button (or `Space`, or a finger) to charge a power meter. A harder throw spins and bounces the 3D dice more; the result stays random. `Enter` does a quick throw.
+- **🏁 Finishing order:** when a ship reaches Andromeda, choose **Continue race** to keep playing for 2nd, 3rd and the rest (finished ships sit out), or **End & see results**. The race ends automatically when only one ship is left.
+- **🏆 Results & stats:** final placings, awards (luckiest and unluckiest pilot, biggest boost, longest fall, space bully, hot dice) and a per-player stats table (rolls, average roll, sixes, boosts, hazards, net squares, collisions).
+- **🔍 Element preview:** hover over (or tap) any boost or hazard to highlight its path and see where it leads.
 - **🤖 CPU pilots:** any seat can be a computer player.
 
 ## Presentation

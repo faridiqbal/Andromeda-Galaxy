@@ -85,7 +85,7 @@ const Board = (() => {
    */
   function generateLayout(avoid = []) {
     const kinds = Object.keys(COUNTS).sort((a, b) => REACH[b][1] - REACH[a][1]);
-    for (let attempt = 0; attempt < 400; attempt++) {
+    for (let attempt = 0; attempt < 3000; attempt++) {
       const used = new Set([1, 100]);
       const starts = new Set();
       const out = {};
@@ -111,8 +111,38 @@ const Board = (() => {
         }
         if (!ok) break;
       }
-      if (ok) return out;
+      if (ok && isBalanced(out)) return out;
     }
+    return null;
+  }
+
+  /**
+   * Fairness: each third of the board (2–33, 34–66, 67–99) gets at least 2 boosts and
+   * 2 hazards, and no third is overloaded with more than 4 hazards or 4 boosts.
+   */
+  const BANDS = [[2, 33], [34, 66], [67, 99]];
+  function isBalanced(layout) {
+    return BANDS.every(([lo, hi]) => {
+      let up = 0, down = 0;
+      for (const [f, j] of Object.entries(layout)) {
+        if (+f < lo || +f > hi) continue;
+        KINDS[j.kind].up ? up++ : down++;
+      }
+      return up >= 2 && down >= 2 && up <= 4 && down <= 4;
+    });
+  }
+
+  /** Square under a point in board units (0..1000), or null. */
+  function cellAt(x, y) {
+    if (x < 0 || y < 0 || x >= 1000 || y >= 1000) return null;
+    const col = Math.floor(x / 100), row = 9 - Math.floor(y / 100);
+    return row * 10 + (row % 2 === 0 ? col : 9 - col) + 1;
+  }
+
+  /** Jump that starts or ends on square n: { from, to, kind } or null. */
+  function jumpAt(n) {
+    if (JUMPS[n]) return { from: n, ...JUMPS[n] };
+    for (const [f, j] of Object.entries(JUMPS)) if (j.to === n) return { from: +f, ...j };
     return null;
   }
 
@@ -549,5 +579,5 @@ const Board = (() => {
     return { x: pt.x, y: pt.y };
   }
 
-  return { JUMPS, KINDS, COUNTS, cellXY, build, pathPoint, randomize, svg: () => svgRoot };
+  return { JUMPS, KINDS, COUNTS, BANDS, cellXY, cellAt, jumpAt, isBalanced, build, pathPoint, randomize, svg: () => svgRoot };
 })();

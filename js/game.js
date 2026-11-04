@@ -45,6 +45,8 @@
   let turnToken = 0;           // guards delayed callbacks from older turns
 
   const cur = () => players[current];
+  const active = () => players.filter(p => !p.finished);
+  const newStats = () => ({ rolls: 0, sixes: 0, pips: 0, boosts: 0, boostGain: 0, hazards: 0, hazardLoss: 0, biggestBoost: 0, longestFall: 0, rams: 0, bumped: 0, bounces: 0 });
   const chip = p => p.el.querySelector(".chip");
   const cell = n => Board.cellXY(n);
 
@@ -144,6 +146,8 @@
       color: c.color,
       cpu: c.cpu,
       pos: 1,
+      finished: false, place: null, finishRound: null,
+      stats: newStats(),
       el: null, x: 0, y: 0, ox: 0, oy: 0,
     }));
     current = 0;
@@ -152,6 +156,7 @@
     extraRoll = false;
 
     $("#win-modal").classList.remove("open");
+    $("#results-modal").classList.remove("open");
     $("#setup").classList.remove("active");
     $("#game").classList.add("active");
     window.scrollTo(0, 0); // the setup screen may have been scrolled; start with the board in view
@@ -178,6 +183,7 @@
     dimTurnBanner(true);
     Music.setIntensity(0);
     $("#win-modal").classList.remove("open");
+    $("#results-modal").classList.remove("open");
     $("#game").classList.remove("active");
     $("#setup").classList.add("active");
     renderedRows = 0;
@@ -482,7 +488,7 @@
     Camera.overview();
     if (p.cpu) {
       await sleep(600);
-      if (token === turnToken && phase === "roll") onRoll();
+      if (token === turnToken && phase === "roll") onRoll(0.3 + Math.random() * 0.7);
     } else {
       $("#roll-btn").focus({ preventScroll: true });
     }
@@ -517,7 +523,38 @@
     gsap.to(el, { opacity: 0, y: 20, scale: 0.92, duration: now ? 0.2 : 0.5, ease: "power2.in" });
   }
 
-  async function onRoll() {
+  // ---------- hold to throw: charge a power meter, release to throw ----------
+  const CHARGE_MS = 1100;
+  let charge = null;
+  const chargePower = () => Math.min(1, 0.15 + ((performance.now() - charge.t0) / CHARGE_MS) * 0.85);
+  function startCharge() {
+    if (phase !== "roll" || !players.length || cur().cpu || charge) return;
+    Sfx.unlock();
+    charge = { t0: performance.now(), step: -1, raf: 0 };
+    const rb = $("#roll-btn");
+    rb.classList.add("charging");
+    const loop = () => {
+      if (!charge) return;
+      const pw = chargePower();
+      rb.style.setProperty("--pow", pw.toFixed(3));
+      const step = Math.floor(pw * 10);
+      if (step !== charge.step) { charge.step = step; Sfx.charge(pw); }
+      charge.raf = requestAnimationFrame(loop);
+    };
+    loop();
+  }
+  function endCharge(throwIt = true) {
+    if (!charge) return;
+    const pw = chargePower();
+    cancelAnimationFrame(charge.raf);
+    charge = null;
+    const rb = $("#roll-btn");
+    rb.classList.remove("charging");
+    rb.style.setProperty("--pow", 0);
+    if (throwIt) onRoll(pw);
+  }
+
+  async function onRoll(power = 0.5) {
     if (phase !== "roll") return;
     phase = "moving";
     turnToken++;
@@ -537,8 +574,12 @@
     if (forcedRoll) { value = forcedRoll; forcedRoll = null; renderTestDice(); }
     const res = $("#dice-result");
     res.textContent = "…";
-    Sfx.whoosh();
-    await Dice3D.roll(value, { onBounce: s => Sfx.clack(s) });
+    Sfx.whoosh(power);
+    p.stats.rolls++;
+    p.stats.pips += value;
+    if (value === 6) p.stats.sixes++;
+    if (power > 0.85) toast("💪 Power throw!", `${p.emoji} ${escapeHtml(p.name)} hurls the dice`, "up", { hold: 1.2 });
+    await Dice3D.roll(value, { power, onBounce: s => Sfx.clack(s * (0.6 + power * 0.6)) });
     res.textContent = value;
     gsap.fromTo(res, { scale: 1.6, color: "#ffd166" }, { scale: 1, color: "#e8ecff", duration: 0.5, ease: "back.out(3)" });
     if (value === 6) Particles.emit(500, 500, { ...Particles.FX.gold, count: 30, speed: [80, 200] });
@@ -585,6 +626,7 @@
       await hopTo(p, path[i], i, dir);
       if (path[i] === GOAL && i < path.length - 1) {
         const left = path.length - 1 - i;
+        p.stats.bounces++;
         Sfx.alert("bounce");
         Sfx.bounce();
         toast("🪃 Gravity slingshot!", `${p.emoji} ${escapeHtml(p.name)} overshot Andromeda and bounces back ${left} square${left > 1 ? "s" : ""}`, "bounce");
@@ -602,7 +644,12 @@
     updatePanel();
     updateIntensity();
 
-    if (p.pos === GOAL) return win(p);
+    if (p.pos === GOAL) {
+      const r = await finish(p);
+      if (r === "ended") return;
+      extraRoll = false;
+      return nextPlayer();
+    }
 
     if (value === 6) {
       Camera.focus(p.x, p.y, 2.1);
@@ -623,7 +670,7 @@
   async function resolveLanding(p, isMover) {
     // Collisions: the mover knocks rivals on the same square back
     if (isMover && p.pos !== GOAL) {
-      const rivals = players.filter(o => o !== p && o.pos === p.pos);
+      const rivals = players.filter(o => o !== p && !o.finished && o.pos === p.pos);
       for (const r of rivals) {
         Camera.focus(r.x, r.y, 2.3);
         const back = Math.max(1, r.pos - BUMP_BACK);
@@ -635,6 +682,8 @@
         Particles.emit(r.x, r.y, { colors: [p.color, r.color, "#ffffff"], count: 45, speed: [80, 260], size: [2, 5], shape: "streak" });
         Particles.ring(r.x, r.y, "#ffffff", 90, 0.5);
         log(`💥 ${p.name} rammed ${r.name} back ${BUMP_BACK} squares.`, p.color);
+        p.stats.rams++;
+        r.stats.bumped++;
         r.el.classList.add("moving");
         Camera.follow(at(r), 2.1);
         for (let n = r.pos - 1, i = 0; n >= back; n--, i++) await hopTo(r, n, i, -1);
@@ -662,6 +711,9 @@
     p.pos = j.to;
     chip(p).style.transform = "";
     log(`${k.icon} ${p.name} ${k.verb} ${j.to}.`, p.color);
+    const d = Math.abs(j.to - from);
+    if (k.up) { p.stats.boosts++; p.stats.boostGain += d; p.stats.biggestBoost = Math.max(p.stats.biggestBoost, d); }
+    else { p.stats.hazards++; p.stats.hazardLoss += d; p.stats.longestFall = Math.max(p.stats.longestFall, d); }
     Camera.focus(p.x, p.y, 2.1);
     await sleep(350);
   }
@@ -698,20 +750,37 @@
     phase = "moving";
     refreshControls();
     await sleep(TURN_GAP);
-    current = (current + 1) % players.length;
-    if (current === 0) {
+    if (advance()) {
       round++;
       if ((round - 1) % EVENT_EVERY === 0) {
         await cosmicEvent();
-        const winner = players.find(p => p.pos === GOAL);
-        if (winner) return win(winner);
+        if ((await settleFinishers()) === "ended") return;
+        if (cur().finished) advance();
       }
     }
     beginTurn();
   }
 
+  /** Move to the next ship still racing. Returns true if we wrapped past the first seat (new round). */
+  function advance() {
+    let wrapped = false;
+    do {
+      current = (current + 1) % players.length;
+      if (current === 0) wrapped = true;
+    } while (players[current].finished);
+    return wrapped;
+  }
+
+  /** Ships pushed onto 100 by an event finish too. */
+  async function settleFinishers() {
+    for (const w of players.filter(p => !p.finished && p.pos === GOAL)) {
+      if ((await finish(w)) === "ended") return "ended";
+    }
+    return "ok";
+  }
+
   function updateIntensity() {
-    Music.setIntensity(players.some(p => p.pos >= FINAL_STRETCH) ? 2 : 1);
+    Music.setIntensity(active().some(p => p.pos >= FINAL_STRETCH) ? 2 : 1);
   }
 
   // ==================================================================
@@ -719,7 +788,8 @@
   // ==================================================================
   async function cosmicEvent(forcedId = null) {
     let pool = EVENTS;
-    const spread = new Set(players.map(p => p.pos)).size > 1;
+    const racing = active();
+    const spread = new Set(racing.map(p => p.pos)).size > 1;
     if (!spread) pool = EVENTS.filter(e => e.id !== "swap");
     const ev = EVENTS.find(e => e.id === forcedId) || pool[Math.floor(Math.random() * pool.length)];
     phase = "moving";
@@ -756,13 +826,13 @@
     };
 
     if (ev.id === "wind") {
-      for (const p of players) Particles.emit(p.x - 60, p.y, { ...Particles.FX.ice, count: 20, angle: 0, spread: 0.4, speed: [150, 300] });
-      for (const p of players) await moveBy(p, 2);
+      for (const p of racing) Particles.emit(p.x - 60, p.y, { ...Particles.FX.ice, count: 20, angle: 0, spread: 0.4, speed: [150, 300] });
+      for (const p of racing) await moveBy(p, 2);
     } else if (ev.id === "gravity") {
-      for (const p of players) Particles.ring(p.x, p.y, "#7b2ff7", 70, 0.7);
-      for (const p of players) await moveBy(p, -2);
+      for (const p of racing) Particles.ring(p.x, p.y, "#7b2ff7", 70, 0.7);
+      for (const p of racing) await moveBy(p, -2);
     } else if (ev.id === "meteor") {
-      const v = players[Math.floor(Math.random() * players.length)];
+      const v = racing[Math.floor(Math.random() * racing.length)];
       Camera.focus(v.x, v.y, 2.2);
       for (let i = 0; i < 12; i++) {
         setTimeout(() => Particles.emit(v.x + 200, v.y - 260, { ...Particles.FX.fire, count: 3, angle: Math.atan2(260, -200), spread: 0.15, speed: [500, 600], life: [0.45, 0.5], shape: "streak", size: [4, 7], drag: 1 }), i * 60);
@@ -776,7 +846,7 @@
     } else if (ev.id === "shift") {
       await galacticShift();
     } else if (ev.id === "swap") {
-      const sorted = [...players].sort((a, b) => b.pos - a.pos);
+      const sorted = [...racing].sort((a, b) => b.pos - a.pos);
       const lead = sorted[0], last = sorted[sorted.length - 1];
       Sfx.wormhole();
       for (const p of [lead, last]) Particles.emit(p.x, p.y, { ...Particles.FX.purple, count: 40, jitter: 60, attract: { x: p.x, y: p.y, k: 250 }, swirl: 300, speed: [0, 10] });
@@ -823,19 +893,26 @@
   }
 
   // ==================================================================
-  //  WIN
+  //  FINISHING, CONTINUE RACE, RESULTS
   // ==================================================================
-  function win(p) {
-    phase = "over";
+  const MEDALS = ["🥇", "🥈", "🥉"];
+  const ordinal = n => { const sfx = ["th", "st", "nd", "rd"], v = n % 100; return n + (sfx[(v - 20) % 10] || sfx[v] || sfx[0]); };
+
+  /** A ship reached Andromeda. Returns "continue" or "ended". */
+  async function finish(p) {
+    p.finished = true;
+    p.place = players.filter(o => o.place).length + 1;
+    p.finishRound = round;
+    phase = "moving";
     turnToken++;
     dimTurnBanner(true);
     layoutTokens();
     refreshControls();
-    log(`🏆 ${p.name} reached the Andromeda Galaxy in round ${round}!`, p.color);
+    updatePanel();
+    log(`${MEDALS[p.place - 1] || "🏁"} ${p.name} reached the Andromeda Galaxy in ${ordinal(p.place)} place (round ${round})!`, p.color);
     const g = cell(GOAL);
     Camera.focus(g.x, g.y, 3);
     Music.duck(4);
-    Music.setIntensity(0);
     Sfx.win();
     for (let i = 0; i < 5; i++) {
       setTimeout(() => {
@@ -844,15 +921,95 @@
       }, i * 280);
     }
     celebrate(p.color);
-    setTimeout(() => {
-      Camera.overview();
+    await sleep(2000);
+    Camera.overview();
+
+    const racing = active();
+    if (racing.length <= 1) { endRace(); return "ended"; }
+    return askContinue(p, racing);
+  }
+
+  /** "Nova finished 1st! Continue racing for the other places?" */
+  function askContinue(p, racing) {
+    return new Promise(resolve => {
       const av = $("#win-avatar");
       av.textContent = p.emoji;
       av.style.setProperty("--pc", p.color);
-      $("#win-text").innerHTML = `<strong>${escapeHtml(p.name)}</strong> warped all the way to the <strong>Andromeda Galaxy</strong>, 2.5 million light-years from home, in round ${round}!`;
+      $("#win-title").textContent = `${MEDALS[p.place - 1] || "🏁"} ${ordinal(p.place)} place!`;
+      $("#win-text").innerHTML = `<strong>${escapeHtml(p.name)}</strong> warped all the way to the <strong>Andromeda Galaxy</strong> in round ${round}!<br>
+        ${racing.length} commanders are still racing for ${ordinal(p.place + 1)} place.`;
+      const acts = $("#win-actions");
+      acts.innerHTML = `
+        <button class="btn btn-primary" id="continue-btn">Continue race 🚀</button>
+        <button class="btn btn-ghost" id="end-btn">End & see results</button>`;
       $("#win-modal").classList.add("open");
-      $("#again-btn").focus();
-    }, 2000);
+      $("#continue-btn").focus();
+      $("#continue-btn").onclick = () => {
+        $("#win-modal").classList.remove("open");
+        log(`🏁 The race continues for ${ordinal(p.place + 1)} place.`);
+        updateIntensity();
+        resolve("continue");
+      };
+      $("#end-btn").onclick = () => {
+        $("#win-modal").classList.remove("open");
+        endRace();
+        resolve("ended");
+      };
+    });
+  }
+
+  /** Rank everyone still racing by position, then show the results screen. */
+  function endRace() {
+    let place = players.filter(o => o.place).length;
+    for (const r of active().sort((a, b) => b.pos - a.pos)) r.place = ++place;
+    phase = "over";
+    turnToken++;
+    dimTurnBanner(true);
+    layoutTokens();
+    updatePanel();
+    Music.setIntensity(0);
+    showResults();
+  }
+
+  function showResults() {
+    const ranked = [...players].sort((a, b) => a.place - b.place);
+    $("#podium").innerHTML = ranked.map(p => `
+      <li class="podium-row place-${p.place}" style="--pc:${p.color}">
+        <span class="pr-medal">${MEDALS[p.place - 1] || ordinal(p.place)}</span>
+        <span class="crew-badge" style="--pc:${p.color}">${p.emoji}</span>
+        <span class="pr-name">${escapeHtml(p.name)}${p.cpu ? ' <span class="tag">CPU</span>' : ""}</span>
+        <span class="pr-detail">${p.finishRound ? `Reached Andromeda · round ${p.finishRound}` : `Square ${p.pos}`}</span>
+      </li>`).join("");
+
+    // awards: who stood out (only shown when someone actually earned it)
+    const best = (key, label, icon, fmt) => {
+      const top = Math.max(...players.map(p => p.stats[key]));
+      if (top <= 0) return "";
+      const who = players.filter(p => p.stats[key] === top);
+      return `<div class="award"><div class="aw-icon">${icon}</div><div class="aw-label">${label}</div>
+        <div class="aw-who">${who.map(p => `${p.emoji} ${escapeHtml(p.name)}`).join(", ")}</div><div class="aw-val">${fmt(top)}</div></div>`;
+    };
+    $("#awards").innerHTML = [
+      best("boostGain", "Luckiest pilot", "🍀", v => `+${v} squares from boosts`),
+      best("hazardLoss", "Unluckiest pilot", "💀", v => `−${v} squares to hazards`),
+      best("biggestBoost", "Biggest boost", "🚀", v => `+${v} in one go`),
+      best("longestFall", "Longest fall", "📉", v => `−${v} in one go`),
+      best("rams", "Space bully", "💥", v => `${v} collision${v > 1 ? "s" : ""}`),
+      best("sixes", "Hot dice", "🎲", v => `${v} six${v > 1 ? "es" : ""}`),
+    ].join("") || `<p class="muted">A quiet flight: no boosts, hazards or collisions!</p>`;
+
+    $("#stats-table").innerHTML = `
+      <thead><tr><th>Commander</th><th>Rolls</th><th>Avg</th><th>6s</th><th>Boosts</th><th>Hazards</th><th>Net</th><th>Rams</th><th>Rammed</th></tr></thead>
+      <tbody>${ranked.map(p => {
+        const s = p.stats, net = s.boostGain - s.hazardLoss;
+        return `<tr><td><span class="st-name" style="--pc:${p.color}">${p.emoji} ${escapeHtml(p.name)}</span></td>
+          <td>${s.rolls}</td><td>${s.rolls ? (s.pips / s.rolls).toFixed(1) : "–"}</td><td>${s.sixes}</td>
+          <td class="up">${s.boosts} <small>(+${s.boostGain})</small></td><td class="down">${s.hazards} <small>(−${s.hazardLoss})</small></td>
+          <td class="${net >= 0 ? "up" : "down"}">${net >= 0 ? "+" : "−"}${Math.abs(net)}</td><td>${s.rams}</td><td>${s.bumped}</td></tr>`;
+      }).join("")}</tbody>`;
+    $("#results-sub").textContent = `Mission lasted ${round} round${round > 1 ? "s" : ""}.`;
+    $("#results-modal").classList.add("open");
+    $("#again-btn").focus();
   }
 
   function celebrate(color) {
@@ -873,7 +1030,7 @@
   function refreshControls() {
     const p = cur();
     const rb = $("#roll-btn");
-    rb.innerHTML = `<span>${extraRoll && phase === "roll" ? "Roll again 🔥" : p && p.cpu && phase === "roll" ? "CPU is rolling…" : "Roll the dice"}</span><kbd>Space</kbd>`;
+    rb.innerHTML = `<span>${extraRoll && phase === "roll" ? "Hold to roll again 🔥" : p && p.cpu && phase === "roll" ? "CPU is rolling…" : "Hold to throw 🎲"}</span><kbd>Space</kbd>`;
     rb.disabled = !p || p.cpu || phase !== "roll";
   }
 
@@ -882,7 +1039,7 @@
     const p = cur();
     const tp = $("#turn-player");
     tp.style.setProperty("--pc", p.color);
-    const status = phase === "over" ? "Winner!" : `Square ${p.pos} · ${GOAL - p.pos} to go`;
+    const status = phase === "over" ? "Race over" : `Square ${p.pos} · ${GOAL - p.pos} to go`;
     tp.innerHTML = `
       <div class="crew-badge" style="--pc:${p.color}">${p.emoji}</div>
       <div style="min-width:0">
@@ -895,7 +1052,7 @@
 
     const list = $("#player-list");
     list.innerHTML = "";
-    const ranked = [...players].sort((a, b) => b.pos - a.pos);
+    const ranked = [...players].sort((a, b) => (a.place || 99) - (b.place || 99) || b.pos - a.pos);
     players.forEach((pl, i) => {
       const li = document.createElement("li");
       li.style.setProperty("--pc", pl.color);
@@ -906,7 +1063,8 @@
           <div class="pl-name">${escapeHtml(pl.name)} ${pl.cpu ? '<span class="tag">CPU</span>' : ""}</div>
           <div class="pl-bar"><span style="width:${pl.pos}%"></span></div>
         </div>
-        <div class="pl-pos"><small>#${ranked.indexOf(pl) + 1}</small>${pl.pos}</div>`;
+        <div class="pl-pos">${pl.finished ? `<small>${ordinal(pl.place)}</small>${MEDALS[pl.place - 1] || "🏁"}` : `<small>#${ranked.indexOf(pl) + 1}</small>${pl.pos}`}</div>`;
+      if (pl.finished) li.classList.add("finished");
       list.appendChild(li);
     });
     refreshControls();
@@ -967,6 +1125,57 @@
   }
 
   // ==================================================================
+  //  ELEMENT PREVIEW (hover with a mouse, tap on touch screens)
+  // ==================================================================
+  function setupPreview() {
+    const board = $("#board"), tip = $("#tip");
+    let hovered = null, tapTimer = 0, down = null;
+    const hide = () => {
+      if (hovered !== null) { const g = document.getElementById(`jump-${hovered}`); g && g.classList.remove("hover"); }
+      hovered = null;
+      Board.svg().classList.remove("has-hover");
+      tip.className = "tip";
+    };
+    const show = (px, py) => {
+      const u = Camera.unproject(px, py);
+      const n = Board.cellAt(u.x, u.y);
+      const j = n && Board.jumpAt(n);
+      if (!j) return hide();
+      if (hovered !== j.from) {
+        hide();
+        hovered = j.from;
+        const g = document.getElementById(`jump-${j.from}`);
+        g && g.classList.add("hover");
+        Board.svg().classList.add("has-hover");
+      }
+      const k = Board.KINDS[j.kind];
+      tip.innerHTML = `<b>${k.icon} ${k.name}</b><span>${delta(j.from, j.to)}</span><em>${n === j.from ? (k.up ? "Land here to boost up" : "Land here and you fall") : "Destination square"}</em>`;
+      tip.className = `tip show ${k.up ? "up" : "down"}`;
+      const W = board.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+      tip.style.left = Math.max(6, Math.min(W - tw - 6, px - tw / 2)) + "px";
+      tip.style.top = (py - th - 16 < 6 ? py + 22 : py - th - 16) + "px";
+    };
+    board.addEventListener("pointermove", e => {
+      if (e.pointerType !== "mouse") return;
+      if (board.classList.contains("dragging")) return hide();
+      const r = board.getBoundingClientRect();
+      show(e.clientX - r.left, e.clientY - r.top);
+    });
+    board.addEventListener("pointerleave", hide);
+    board.addEventListener("pointerdown", e => { down = { x: e.clientX, y: e.clientY, t: Date.now() }; });
+    board.addEventListener("pointerup", e => {
+      if (e.pointerType === "mouse" || !down) return;
+      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 10 && Date.now() - down.t < 450) {
+        const r = board.getBoundingClientRect();
+        show(e.clientX - r.left, e.clientY - r.top);
+        clearTimeout(tapTimer);
+        tapTimer = setTimeout(hide, 2800);
+      }
+      down = null;
+    });
+  }
+
+  // ==================================================================
   //  TEST MODE
   // ==================================================================
   function renderTestDice() {
@@ -1008,6 +1217,7 @@
     renderRoster();
     renderLegend();
     renderTestDice();
+    setupPreview();
 
     const tt = $("#test-toggle");
     tt.checked = testMode;
@@ -1022,7 +1232,12 @@
     document.addEventListener("click", e => { if (e.target.closest(".btn, .icon-btn, .cpu-toggle, .count-picker button")) Sfx.click(); });
 
     $("#launch-btn").onclick = startGame;
-    $("#roll-btn").onclick = onRoll;
+    const rb = $("#roll-btn");
+    rb.addEventListener("pointerdown", e => { if (e.button === 0 || e.pointerType !== "mouse") { e.preventDefault(); startCharge(); } });
+    rb.addEventListener("pointerup", () => endCharge(true));
+    rb.addEventListener("pointerleave", () => endCharge(true));
+    rb.addEventListener("pointercancel", () => endCharge(false));
+    rb.addEventListener("contextmenu", e => e.preventDefault());
     $("#again-btn").onclick = startGame;
     $("#newcrew-btn").onclick = backToSetup;
     $("#restart-btn").onclick = () => {
@@ -1037,8 +1252,8 @@
       turnToken++;
       dimTurnBanner(true);
       await cosmicEvent($("#test-event").value);
-      const w = players.find(p => p.pos === GOAL);
-      if (w) return win(w);
+      if ((await settleFinishers()) === "ended") return;
+      if (cur().finished) advance();
       beginTurn();
     };
     document.querySelectorAll(".fs-toggle").forEach(b => (b.onclick = toggleFullscreen));
@@ -1061,21 +1276,25 @@
     };
 
     document.addEventListener("keydown", e => {
-      if (!$("#game").classList.contains("active") || $("#win-modal").classList.contains("open")) return;
-      if (e.target.matches("input, textarea")) return;
+      if (!$("#game").classList.contains("active") || $(".modal.open")) return;
+      if (e.target.matches("input, textarea, select")) return;
       if (e.code === "Space" || e.key === "Enter") {
         const ae = document.activeElement;
         if (ae && ae.tagName === "BUTTON" && ae !== $("#roll-btn")) return;
         e.preventDefault();
-        if (players.length && !cur().cpu) onRoll();
+        if (!players.length || cur().cpu) return;
+        if (e.code === "Space") { if (!e.repeat) startCharge(); }
+        else onRoll(0.5); // Enter: quick throw
       } else if (e.key === "f" || e.key === "F") toggleFullscreen();
       else if (e.key === "+" || e.key === "=") Camera.zoomAt(1.3);
       else if (e.key === "-") Camera.zoomAt(1 / 1.3);
       else if (e.key === "0") Camera.reset();
     });
 
+    document.addEventListener("keyup", e => { if (e.code === "Space") { e.preventDefault(); endCharge(true); } });
+
     // tiny hook for automated tests
-    window.__aq = { get state() { return { phase, current, round, players: players.map(p => ({ pos: p.pos })) }; } };
+    window.__aq = { get state() { return { phase, current, round, players: players.map(p => ({ pos: p.pos, finished: p.finished, place: p.place, stats: p.stats })) }; } };
   }
 
   init();

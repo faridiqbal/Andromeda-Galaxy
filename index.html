@@ -40,7 +40,9 @@
           <div><b>▲ Boosts</b> 🚀 Rockets, 🛸 UFO beams, 🌀 wormholes and ☄️ comets carry you up the board.</div>
           <div><b>▼ Hazards</b> ⚡ Ion storms, 🕳️ black holes, 🔥 flaming asteroids and ☀️ solar flares knock you down.</div>
           <div><b>🎰 Random board</b> Every game deals a new layout of boosts and hazards, with the same number of each.</div>
-          <div><b>🎲 Turns</b> Players take turns rolling the 3D dice and moving that many squares.</div>
+          <div><b>🎲 Turns</b> Players take turns rolling the 3D dice and moving that many squares. Hold the roll button to charge a harder throw.</div>
+          <div><b>🏁 Finishing</b> When someone reaches Andromeda you can keep racing for 2nd, 3rd and the rest, or end and see the results.</div>
+          <div><b>🔍 Preview</b> Hover over (or tap) any boost or hazard to see where it leads.</div>
           <div><b>💥 Collisions</b> Land on a rival to knock them back 2 squares.</div>
           <div><b>🔥 Afterburner</b> Rolling a 6 gives you another roll.</div>
           <div><b>🌌 Cosmic events</b> Every 3 rounds: Solar Wind, Gravity Wave, Warp Rift, Meteor Shower or ✨ Galactic Shift, which moves every boost and hazard to a new spot.</div>
@@ -57,7 +59,7 @@
       <button id="launch-btn" class="btn btn-primary btn-big">
         <span>Launch mission</span> <span aria-hidden="true">🚀</span>
       </button>
-      <p class="hint">Keys: <kbd>Space</kbd> roll · <kbd>+</kbd> <kbd>−</kbd> zoom · <kbd>0</kbd> reset view · <kbd>F</kbd> full screen</p>
+      <p class="hint">Keys: hold <kbd>Space</kbd> to throw (harder the longer you hold), <kbd>Enter</kbd> quick roll · <kbd>+</kbd> <kbd>−</kbd> zoom · <kbd>0</kbd> reset view · <kbd>F</kbd> full screen</p>
     </div>
   </section>
 
@@ -82,6 +84,7 @@
           <div id="dice-stage" class="dice-stage" aria-hidden="true"></div>
           <div id="toast" class="toast" role="status" aria-live="polite"></div>
           <div id="turn-banner" class="turn-banner" role="status" aria-live="polite"></div>
+          <div id="tip" class="tip" role="tooltip"></div>
         </div>
       </div>
     </div>
@@ -145,6 +148,20 @@
       <div id="win-avatar" class="win-avatar"></div>
       <h2 id="win-title">Mission complete!</h2>
       <p id="win-text"></p>
+      <div id="win-actions" class="modal-actions"></div>
+    </div>
+  </div>
+
+  <!-- ============ RESULTS ============ -->
+  <div id="results-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="results-title">
+    <div class="modal-card results-card glass">
+      <h2 id="results-title">🌌 Mission results</h2>
+      <p id="results-sub" class="muted"></p>
+      <ol id="podium" class="podium"></ol>
+      <h3 class="res-h">Awards</h3>
+      <div id="awards" class="awards"></div>
+      <h3 class="res-h">Flight stats</h3>
+      <div class="table-wrap"><table id="stats-table" class="stats-table"></table></div>
       <div class="modal-actions">
         <button id="again-btn" class="btn btn-primary">Play again</button>
         <button id="newcrew-btn" class="btn btn-ghost">New crew</button>

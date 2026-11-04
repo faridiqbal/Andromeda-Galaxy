@@ -143,22 +143,23 @@ const Dice3D = (() => {
    * Throw the die so that it lands showing `value`.
    * Resolves once it has come to rest.
    */
-  function roll(value, { onBounce } = {}) {
+  function roll(value, { onBounce, power = 0.5 } = {}) {
+    power = Math.max(0, Math.min(1, power)); // 0 = gentle toss, 1 = full-power throw
     cancelAnimationFrame(rafId);
     const qFace = new THREE.Quaternion().setFromEuler(FACE_UP[value]);
     const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand(-0.6, 0.6));
     const qFinal = qYaw.multiply(qFace);
 
     const spinAxis = new THREE.Vector3(rand(-1, 1), rand(-0.4, 0.4), rand(-1, 1)).normalize();
-    const spinAmount = Math.PI * 2 * Math.round(rand(3, 5)) + rand(0, Math.PI);
+    const spinAmount = Math.PI * 2 * Math.round(2 + power * 5 + rand(0, 1)) + rand(0, Math.PI);
 
     // Throw from a random lower corner towards the middle of the board
     const side = Math.random() < 0.5 ? -1 : 1;
-    const start = new THREE.Vector3(side * rand(7, 9), 4.5, rand(6, 8));
+    const start = new THREE.Vector3(side * rand(6, 8 + power * 3), 3 + power * 3.5, rand(5, 7 + power * 3));
     const end = new THREE.Vector3(rand(-1.6, 1.6), HALF, rand(-1.4, 1.4));
 
-    const duration = 1500;
-    const bounces = 3;
+    const duration = 1100 + power * 900;
+    const bounces = power > 0.65 ? 4 : 3;
     const shape = 0.7;
     // Times where the die touches the ground (sin term crosses zero)
     const hitTimes = [];
@@ -176,7 +177,7 @@ const Dice3D = (() => {
         const p = easeOutCubic(t);
         die.position.x = start.x + (end.x - start.x) * p;
         die.position.z = start.z + (end.z - start.z) * p;
-        const bounceY = Math.abs(Math.sin(Math.PI * (bounces + 0.5) * Math.pow(t, shape))) * 3.2 * Math.pow(1 - t, 1.6);
+        const bounceY = Math.abs(Math.sin(Math.PI * (bounces + 0.5) * Math.pow(t, shape))) * (1.8 + power * 2.8) * Math.pow(1 - t, 1.6);
         const dropIn = (start.y - HALF) * Math.pow(Math.max(0, 1 - t * 4), 2);
         die.position.y = HALF + Math.max(bounceY, dropIn);
 

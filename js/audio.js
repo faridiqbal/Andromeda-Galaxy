@@ -88,7 +88,8 @@ const Sfx = (() => {
     },
 
     // dice & movement
-    whoosh() { noise(0.4, { vol: 0.14, freq: 500, to: 2600, q: 0.7, attack: 0.08 }); },
+    whoosh(power = 0.5) { noise(0.3 + power * 0.3, { vol: 0.08 + power * 0.14, freq: 400, to: 1800 + power * 2400, q: 0.7, attack: 0.08 }); },
+    charge(p) { tone(260 + p * 900, 0.07, { type: "square", vol: 0.025 + p * 0.03 }); },
     clack(strength = 1) {
       noise(0.06, { vol: 0.35 * strength, freq: 2600, q: 2 });
       tone(180 + Math.random() * 60, 0.07, { type: "triangle", vol: 0.1 * strength });
