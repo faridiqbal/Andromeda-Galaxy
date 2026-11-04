@@ -414,6 +414,7 @@ kbd { font-family: var(--font-body); font-size: 0.75em; padding: 1px 6px; border
 .test-dice { display: flex; gap: 4px; }
 .test-dice button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.06); color: var(--ink); font-family: var(--font-display); cursor: pointer; }
 .test-dice button.on { background: #ffd166; color: #111; border-color: #ffd166; }
+.test-row select { padding: 6px 8px; border-radius: 8px; border: 1px solid var(--glass-border); background: rgba(5,8,22,0.8); color: var(--ink); font-family: var(--font-body); }
 .test-row input { width: 64px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--glass-border); background: rgba(5,8,22,0.6); color: var(--ink); font-family: var(--font-body); }
 .btn-sm { padding: 6px 12px; font-size: 0.75rem; border-radius: 8px; }
 

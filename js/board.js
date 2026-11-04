@@ -24,6 +24,16 @@ const Board = (() => {
     98: { to: 79, kind: "storm" },
   };
 
+  // How many of each element a board has (the layout itself is randomised every game)
+  const COUNTS = {};
+  for (const j of Object.values(JUMPS)) COUNTS[j.kind] = (COUNTS[j.kind] || 0) + 1;
+
+  // How far each kind moves you, in squares [min, max]
+  const REACH = {
+    rocket: [18, 45], ufo: [12, 30], wormhole: [15, 40], comet: [12, 30],
+    storm: [15, 45], blackhole: [18, 45], asteroid: [12, 30], flare: [10, 26],
+  };
+
   const KINDS = {
     rocket:    { up: true,  icon: "🚀", name: "Rocket",       title: "Rocket boost!",   verb: "rocket-boosted to" },
     ufo:       { up: true,  icon: "🛸", name: "UFO beam",     title: "Tractor beam!",   verb: "was beamed up by a friendly UFO to" },
@@ -39,6 +49,8 @@ const Board = (() => {
 
   const NS = "http://www.w3.org/2000/svg";
   const guides = {}; // start square -> invisible SVG path used to animate tokens
+  let cells = {};    // square -> cell element
+  let svgRoot = null;
 
   /** Cell number (1..100) -> centre in board units (0..1000). */
   function cellXY(n) {
@@ -57,12 +69,77 @@ const Board = (() => {
 
   function build(gridEl, svgEl) {
     gridEl.innerHTML = "";
-    svgEl.innerHTML = "";
+    svgRoot = svgEl;
     buildCells(gridEl);
-    buildSvg(svgEl);
+    applyLayout();
+  }
+
+  const rowOf = n => Math.floor((n - 1) / 10);
+
+  /**
+   * Random layout with the same number of each element. Rules kept:
+   *  - boosts always go up, hazards always go down, and never to/from squares 1 or 100
+   *  - no square is used twice (so no element starts where another starts or ends: no chains)
+   *  - every element moves you to a different row, and starts aren't packed side by side
+   *  - `avoid` squares (e.g. where pieces stand) never get an element start
+   */
+  function generateLayout(avoid = []) {
+    const kinds = Object.keys(COUNTS).sort((a, b) => REACH[b][1] - REACH[a][1]);
+    for (let attempt = 0; attempt < 400; attempt++) {
+      const used = new Set([1, 100]);
+      const starts = new Set();
+      const out = {};
+      let ok = true;
+      for (const kind of kinds) {
+        for (let c = 0; c < COUNTS[kind] && ok; c++) {
+          let placed = false;
+          for (let t = 0; t < 300 && !placed; t++) {
+            const [lo, hi] = REACH[kind];
+            const dist = lo + Math.floor(Math.random() * (hi - lo + 1));
+            const up = KINDS[kind].up;
+            const from = up ? 2 + Math.floor(Math.random() * (99 - dist - 1)) : dist + 2 + Math.floor(Math.random() * (98 - dist - 1));
+            const to = up ? from + dist : from - dist;
+            if (from < 2 || from > 99 || to < 2 || to > 99) continue;
+            if (used.has(from) || used.has(to) || avoid.includes(from)) continue;
+            if (starts.has(from - 1) || starts.has(from + 1)) continue;
+            if (rowOf(from) === rowOf(to)) continue;
+            out[from] = { to, kind };
+            used.add(from); used.add(to); starts.add(from);
+            placed = true;
+          }
+          if (!placed) ok = false;
+        }
+        if (!ok) break;
+      }
+      if (ok) return out;
+    }
+    return null;
+  }
+
+  /** Replace the layout with a fresh random one (same counts), and redraw. */
+  function randomize(avoid = []) {
+    const next = generateLayout(avoid);
+    if (!next) return false;
+    for (const k of Object.keys(JUMPS)) delete JUMPS[k];
+    Object.assign(JUMPS, next);
+    applyLayout();
+    return true;
+  }
+
+  /** Redraw elements and start-square markers for the current layout. */
+  function applyLayout() {
+    for (const k of Object.keys(guides)) delete guides[k];
+    for (const [n, c] of Object.entries(cells)) {
+      c.classList.remove("up-start", "down-start");
+      const j = JUMPS[n];
+      if (j) c.classList.add(KINDS[j.kind].up ? "up-start" : "down-start");
+    }
+    svgRoot.innerHTML = "";
+    buildSvg(svgRoot);
   }
 
   function buildCells(gridEl) {
+    cells = {};
     const hues = [232, 250, 268, 218, 285];
     for (let n = 1; n <= 100; n++) {
       const { row, col } = cellXY(n);
@@ -77,7 +154,6 @@ const Board = (() => {
         `radial-gradient(circle at ${20 + r() * 60}% ${20 + r() * 60}%, hsla(${hue + 30},70%,40%,0.25), transparent 70%),
          linear-gradient(145deg, hsl(${hue},45%,${light}%), hsl(${hue + 15},50%,${light - 6}%))`);
 
-      if (JUMPS[n]) cell.classList.add(KINDS[JUMPS[n].kind].up ? "up-start" : "down-start");
 
       const num = document.createElement("span");
       num.className = "num";
@@ -110,6 +186,7 @@ const Board = (() => {
         });
         cell.appendChild(p);
       }
+      cells[n] = cell;
       gridEl.appendChild(cell);
     }
   }
@@ -472,5 +549,5 @@ const Board = (() => {
     return { x: pt.x, y: pt.y };
   }
 
-  return { JUMPS, KINDS, cellXY, build, pathPoint };
+  return { JUMPS, KINDS, COUNTS, cellXY, build, pathPoint, randomize, svg: () => svgRoot };
 })();

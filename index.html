@@ -39,10 +39,11 @@
           <div><b>🎯 Goal</b> Be the first to land <em>exactly</em> on square 100, the Andromeda Galaxy. Overshoot it and you bounce back for the rest of the roll.</div>
           <div><b>▲ Boosts</b> 🚀 Rockets, 🛸 UFO beams, 🌀 wormholes and ☄️ comets carry you up the board.</div>
           <div><b>▼ Hazards</b> ⚡ Ion storms, 🕳️ black holes, 🔥 flaming asteroids and ☀️ solar flares knock you down.</div>
+          <div><b>🎰 Random board</b> Every game deals a new layout of boosts and hazards, with the same number of each.</div>
           <div><b>🎲 Turns</b> Players take turns rolling the 3D dice and moving that many squares.</div>
           <div><b>💥 Collisions</b> Land on a rival to knock them back 2 squares.</div>
           <div><b>🔥 Afterburner</b> Rolling a 6 gives you another roll.</div>
-          <div><b>🌌 Cosmic events</b> Every 3 rounds: Solar Wind, Gravity Wave, Warp Rift or Meteor Shower shake up the race.</div>
+          <div><b>🌌 Cosmic events</b> Every 3 rounds: Solar Wind, Gravity Wave, Warp Rift, Meteor Shower or ✨ Galactic Shift, which moves every boost and hazard to a new spot.</div>
           <div><b>🎥 Camera</b> The camera follows the action. Scroll or pinch to zoom and drag to look around; double-click resets.</div>
         </div>
       </details>
@@ -116,6 +117,11 @@
           <span>Teleport to</span>
           <input id="test-square" type="number" min="1" max="99" value="50" aria-label="Square to teleport to" />
           <button id="test-go" class="btn btn-ghost btn-sm">Go</button>
+        </div>
+        <div class="test-row">
+          <span>Cosmic event</span>
+          <select id="test-event" aria-label="Cosmic event to trigger"></select>
+          <button id="test-event-go" class="btn btn-ghost btn-sm">Trigger</button>
         </div>
       </div>
 

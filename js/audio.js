@@ -125,6 +125,11 @@ const Sfx = (() => {
     flare() { noise(1.3, { vol: 0.2, freq: 3000, to: 400, q: 0.6 }); tone(500, 1.2, { type: "sawtooth", vol: 0.04, to: 120 }); },
     bump() { noise(0.25, { vol: 0.45, freq: 500, q: 0.6, type: "lowpass" }); tone(140, 0.25, { type: "square", vol: 0.08, to: 60 }); },
     pop() { tone(500, 0.12, { vol: 0.08, to: 1100 }); },
+    shift() {
+      noise(1.6, { vol: 0.14, freq: 300, to: 6000, q: 1.2, attack: 0.5 });
+      [392, 494, 587, 740, 880, 1175].forEach((f, i) => tone(f, 0.7, { type: "sine", vol: 0.06, delay: i * 0.12 }));
+      [1175, 880, 740, 587].forEach((f, i) => tone(f, 0.6, { type: "triangle", vol: 0.05, delay: 1 + i * 0.1 }));
+    },
     event() { [196, 247, 294, 392].forEach((f, i) => tone(f, 0.9, { type: "sine", vol: 0.08, delay: i * 0.12 })); noise(1.2, { vol: 0.08, freq: 200, to: 3000, q: 1, attack: 0.4 }); },
     afterburner() { noise(0.8, { vol: 0.25, freq: 200, to: 2000, q: 0.7 }); [523, 659, 784].forEach((f, i) => tone(f, 0.2, { type: "square", vol: 0.04, delay: i * 0.08 })); },
     win() {

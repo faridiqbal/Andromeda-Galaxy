@@ -5,6 +5,8 @@ A space-themed take on snakes & ladders for 1–5 players, built with plain HTML
 Square 100 is the **Andromeda Galaxy**. Land on it exactly to win. Overshoot it and you bounce back for the remaining pips (97 + 6 → 98, 99, 100, 99, 98, **97**).
 
 ## Board elements
+Every game deals a **random layout** with the same number of each element (3 rockets, 2 UFO beams, 2 comets, 1 wormhole, 3 ion storms, 2 black holes, 2 fireball asteroids, 2 solar flares). The layout always follows the rules: boosts go up and hazards go down, nothing starts or ends on 1 or 100, no square holds more than one start or end (so elements never chain), and each element moves you at least one row.
+
 | Boosts ▲ | Hazards ▼ |
 |---|---|
 | 🚀 Rocket: blast straight up | ⚡ Ion storm: zapped down a lightning bolt |
@@ -16,7 +18,7 @@ Square 100 is the **Andromeda Galaxy**. Land on it exactly to win. Overshoot it 
 - **Turn-based dice:** players take turns throwing the 3D dice and hop square by square.
 - **💥 Collisions:** landing on a rival knocks them back 2 squares.
 - **🔥 Afterburner:** rolling a 6 gives another roll.
-- **🌌 Cosmic events** every 3 rounds: Solar Wind (+2 for everyone), Gravity Wave (−2 for everyone), Warp Rift (leader and last place swap), Meteor Shower (one ship −3).
+- **🌌 Cosmic events** every 3 rounds: Solar Wind (+2 for everyone), Gravity Wave (−2 for everyone), Warp Rift (leader and last place swap), Meteor Shower (one ship −3), Galactic Shift (every element moves to a new random position, never under a piece).
 - **🤖 CPU pilots:** any seat can be a computer player.
 
 ## Presentation

@@ -21,6 +21,7 @@
     { id: "gravity", icon: "🌑", title: "Gravity Wave",   text: "Every ship is pulled 2 squares back" },
     { id: "swap",    icon: "🔀", title: "Warp Rift",      text: "The leader and the last ship swap places" },
     { id: "meteor",  icon: "🌠", title: "Meteor Shower",  text: "One unlucky ship is knocked back 3 squares" },
+    { id: "shift",   icon: "✨", title: "Galactic Shift", text: "Every boost and hazard warps to a new position" },
   ];
 
   const $ = s => document.querySelector(s);
@@ -158,6 +159,8 @@
     $("#dice-result").textContent = "–";
     $("#test-panel").hidden = !testMode;
 
+    Board.randomize();       // a fresh random layout every game
+    setupAmbientParticles();
     createTokens();
     Camera.reset();
     requestAnimationFrame(() => Dice3D.resize());
@@ -714,11 +717,11 @@
   // ==================================================================
   //  COSMIC EVENTS (move players, then resolve what they land on)
   // ==================================================================
-  async function cosmicEvent() {
+  async function cosmicEvent(forcedId = null) {
     let pool = EVENTS;
     const spread = new Set(players.map(p => p.pos)).size > 1;
     if (!spread) pool = EVENTS.filter(e => e.id !== "swap");
-    const ev = pool[Math.floor(Math.random() * pool.length)];
+    const ev = EVENTS.find(e => e.id === forcedId) || pool[Math.floor(Math.random() * pool.length)];
     phase = "moving";
     refreshControls();
     Camera.overview();
@@ -770,6 +773,8 @@
       Particles.emit(v.x, v.y, { ...Particles.FX.fire, count: 50, speed: [100, 260] });
       log(`🌠 ${v.name} was hit by the meteor shower.`, v.color);
       await moveBy(v, -3);
+    } else if (ev.id === "shift") {
+      await galacticShift();
     } else if (ev.id === "swap") {
       const sorted = [...players].sort((a, b) => b.pos - a.pos);
       const lead = sorted[0], last = sorted[sorted.length - 1];
@@ -788,6 +793,33 @@
     updateIntensity();
     Camera.overview();
     await sleep(400);
+  }
+
+  /** Every element dissolves and re-forms in a new random spot (never under a piece). */
+  async function galacticShift() {
+    const svg = Board.svg();
+    const burst = (jumps, color) => {
+      for (const [f, j] of Object.entries(jumps)) {
+        for (const n of [+f, j.to]) {
+          const c = cell(n);
+          Particles.emit(c.x, c.y, { ...Particles.FX.purple, colors: [color, "#ffffff", "#7fe7ff"], count: 14, speed: [40, 150] });
+        }
+        const a = cell(+f);
+        Particles.ring(a.x, a.y, color, 70, 0.6);
+      }
+    };
+    Sfx.shift();
+    burst(Board.JUMPS, "#c77dff");
+    await new Promise(r => gsap.to(svg, { opacity: 0, scale: 0.92, rotation: -4, transformOrigin: "50% 50%", filter: "blur(8px)", duration: 0.8, ease: "power2.in", onComplete: r }));
+    Particles.clearEmitters();
+    Board.randomize(players.map(p => p.pos));
+    setupAmbientParticles();
+    burst(Board.JUMPS, "#7fe7ff");
+    await new Promise(r => gsap.fromTo(svg, { opacity: 0, scale: 1.08, rotation: 4, filter: "blur(8px)" },
+      { opacity: 1, scale: 1, rotation: 0, filter: "blur(0px)", duration: 0.9, ease: "power2.out", onComplete: r }));
+    gsap.set(svg, { clearProps: "transform,filter" });
+    log("✨ The board shifted: every boost and hazard is in a new position.");
+    await sleep(600);
   }
 
   // ==================================================================
@@ -967,6 +999,7 @@
   // ==================================================================
   function init() {
     Board.build($("#grid"), $("#paths"));
+    Board.randomize();
     Dice3D.init($("#dice-stage"));
     Camera.init($("#camera"), $("#board"));
     Particles.init($("#particles"));
@@ -998,6 +1031,16 @@
     $("#mute-btn").onclick = e => { e.currentTarget.textContent = Sfx.toggle() ? "🔇" : "🔊"; e.currentTarget.classList.toggle("off", Sfx.muted); };
     $("#music-btn").onclick = e => { const on = Music.toggle(); e.currentTarget.classList.toggle("off", !on); e.currentTarget.title = on ? "Music on" : "Music off"; };
     $("#test-go").onclick = testTeleport;
+    $("#test-event").innerHTML = EVENTS.map(e => `<option value="${e.id}">${e.icon} ${e.title}</option>`).join("");
+    $("#test-event-go").onclick = async () => {
+      if (phase !== "roll") return Sfx.error();
+      turnToken++;
+      dimTurnBanner(true);
+      await cosmicEvent($("#test-event").value);
+      const w = players.find(p => p.pos === GOAL);
+      if (w) return win(w);
+      beginTurn();
+    };
     document.querySelectorAll(".fs-toggle").forEach(b => (b.onclick = toggleFullscreen));
     const fsSync = () => {
       const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
