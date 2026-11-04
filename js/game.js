@@ -153,6 +153,7 @@
     $("#win-modal").classList.remove("open");
     $("#setup").classList.remove("active");
     $("#game").classList.add("active");
+    window.scrollTo(0, 0); // the setup screen may have been scrolled; start with the board in view
     $("#log").innerHTML = "";
     $("#dice-result").textContent = "–";
     $("#test-panel").hidden = !testMode;
@@ -171,6 +172,7 @@
   function backToSetup() {
     phase = "idle";
     turnToken++;
+    dimTurnBanner(true);
     Music.setIntensity(0);
     $("#win-modal").classList.remove("open");
     $("#game").classList.remove("active");
@@ -468,6 +470,7 @@
     layoutTokens();
     updatePanel();
     if (!extraRoll) Sfx.turn();
+    showTurnBanner(p);
     Particles.ring(p.x, p.y, p.color, 70, 0.8);
     // cinematic swoop: zoom in on whose turn it is, then pull back for the dice
     Camera.focus(p.x, p.y, 2.1);
@@ -482,10 +485,40 @@
     }
   }
 
+  // ---------- turn banner: whose turn it is, shown on the board ----------
+  const TURN_BANNER_MIN = 800; // stays at least this long, and until the dice is thrown
+  let bannerShownAt = 0;
+  let bannerId = 0;
+  function showTurnBanner(p) {
+    const el = $("#turn-banner");
+    bannerId++;
+    bannerShownAt = performance.now();
+    el.style.setProperty("--pc", p.color);
+    el.innerHTML = `
+      <div class="tb-badge">${p.emoji}</div>
+      <div class="tb-text">
+        <div class="tb-label">${extraRoll ? "🔥 Extra roll" : p.cpu ? "CPU's turn" : "Your turn"} · Round ${round}</div>
+        <div class="tb-name">${escapeHtml(p.name)}</div>
+      </div>`;
+    gsap.killTweensOf(el);
+    gsap.fromTo(el, { opacity: 0, y: 30, scale: 0.85, xPercent: -50 }, { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "back.out(2)" });
+  }
+  /** Fade the banner once the dice is thrown, but never before it has shown for 800 ms. */
+  async function dimTurnBanner(now = false) {
+    const id = bannerId;
+    const left = TURN_BANNER_MIN - (performance.now() - bannerShownAt);
+    if (!now && left > 0) await sleep(left);
+    if (id !== bannerId) return; // a newer banner replaced this one
+    const el = $("#turn-banner");
+    gsap.killTweensOf(el);
+    gsap.to(el, { opacity: 0, y: 20, scale: 0.92, duration: now ? 0.2 : 0.5, ease: "power2.in" });
+  }
+
   async function onRoll() {
     if (phase !== "roll") return;
     phase = "moving";
     turnToken++;
+    dimTurnBanner();
     Sfx.unlock();
     Music.start();
     refreshControls();
@@ -763,6 +796,7 @@
   function win(p) {
     phase = "over";
     turnToken++;
+    dimTurnBanner(true);
     layoutTokens();
     refreshControls();
     log(`🏆 ${p.name} reached the Andromeda Galaxy in round ${round}!`, p.color);
