@@ -597,7 +597,12 @@
     await sleep(350);
   }
 
+  const TURN_GAP = 500; // pause after a turn finishes before the next player starts
+
   async function nextPlayer() {
+    phase = "moving";
+    refreshControls();
+    await sleep(TURN_GAP);
     current = (current + 1) % players.length;
     if (current === 0) {
       round++;
@@ -795,9 +800,9 @@
     gsap.killTweensOf(t);
     return new Promise(res => {
       gsap.timeline({ onComplete: res })
-        .fromTo(t, { opacity: 0, scale: 0.6, xPercent: -50, yPercent: -50 },
-          { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(2)" })
-        .to(t, { opacity: 0, scale: 0.9, duration: 0.3, delay: hold });
+        .fromTo(t, { opacity: 0, scale: 0.85, xPercent: -50, yPercent: 0, y: -24 },
+          { opacity: 1, scale: 1, y: 0, duration: 0.35, ease: "back.out(2)" })
+        .to(t, { opacity: 0, y: -16, duration: 0.3, delay: hold });
     });
   }
 
