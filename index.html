@@ -32,10 +32,32 @@
         <div id="roster" class="roster"></div>
       </div>
 
+      <details class="how-to">
+        <summary>How to play</summary>
+        <div class="how-grid">
+          <div><b>🎯 Goal</b> Be the first to land <em>exactly</em> on square 100, the Andromeda Galaxy. Overshoot it and you bounce back for the rest of the roll.</div>
+          <div><b>▲ Boosts</b> 🚀 Rockets, 🛸 UFO beams, 🌀 wormholes and ☄️ comets carry you up the board.</div>
+          <div><b>▼ Hazards</b> 🐍 Serpents, 🕳️ black holes, 🪨 asteroids and ☀️ solar flares knock you down. You salvage +1⚡ from each crash.</div>
+          <div><b>⚡ Energy</b> Collect 💎 crystals by flying over them (max 5⚡) and spend it on abilities.</div>
+          <div><b>🛡️ Shield (2⚡)</b> Before rolling. It blocks the next hazard or collision.</div>
+          <div><b>🔺🔻 Thrusters (1⚡ each)</b> After rolling, adjust the move by up to ±2. A landing preview shows where you'll end up.</div>
+          <div><b>🎲 Reroll (2⚡)</b> Don't like the roll? Throw again, once per turn.</div>
+          <div><b>💥 Collisions</b> Land on a rival to knock them back 2 squares.</div>
+          <div><b>🔥 Afterburner</b> Rolling a 6 gives you another roll.</div>
+          <div><b>🌌 Cosmic events</b> Every 3 rounds: Solar Wind, Crystal Rain, Ion Storm (free abilities) or Nebula Drain.</div>
+        </div>
+      </details>
+
+      <label class="test-switch">
+        <input type="checkbox" id="test-toggle" />
+        <span class="track"><span class="thumb"></span></span>
+        <span>🧪 Test mode: choose dice values, teleport, add energy</span>
+      </label>
+
       <button id="launch-btn" class="btn btn-primary btn-big">
         <span>Launch mission</span> <span aria-hidden="true">🚀</span>
       </button>
-      <p class="hint">Rockets boost you up. Space serpents drag you down. Roll past square 100 and you bounce back for the rest of that roll.</p>
+      <p class="hint">Keys: <kbd>Space</kbd> roll / launch · <kbd>←</kbd><kbd>→</kbd> thrusters · <kbd>S</kbd> shield · <kbd>R</kbd> reroll</p>
     </div>
   </section>
 
@@ -46,7 +68,9 @@
         <div id="board" class="board">
           <div id="grid" class="grid"></div>
           <svg id="paths" class="paths" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <div id="ghost" class="ghost" aria-hidden="true"></div>
           <div id="tokens" class="tokens"></div>
+          <div id="fx" class="fx" aria-hidden="true"></div>
           <div id="dice-stage" class="dice-stage" aria-hidden="true"></div>
           <div id="toast" class="toast" role="status" aria-live="polite"></div>
         </div>
@@ -63,7 +87,7 @@
       </div>
 
       <div class="turn-box">
-        <div class="turn-label">Current turn</div>
+        <div class="turn-label-row"><span class="turn-label">Current turn</span><span id="round-info" class="round-info"></span></div>
         <div id="turn-player" class="turn-player"></div>
       </div>
 
@@ -75,7 +99,32 @@
         </button>
       </div>
 
+      <div id="preview" class="preview" aria-live="polite"></div>
+
+      <div id="actions" class="actions">
+        <button id="shield-btn" class="act" title="Shield: blocks the next hazard or collision (S)"><span class="ai">🛡️</span><span class="al">Shield</span><span class="ac">2⚡</span></button>
+        <button id="minus-btn" class="act" title="Thrust −1: move one fewer square (←)"><span class="ai">🔻</span><span class="al">Thrust −1</span><span class="ac">1⚡</span></button>
+        <button id="plus-btn" class="act" title="Thrust +1: move one more square (→)"><span class="ai">🔺</span><span class="al">Thrust +1</span><span class="ac">1⚡</span></button>
+        <button id="reroll-btn" class="act" title="Reroll the dice once per turn (R)"><span class="ai">🎲</span><span class="al">Reroll</span><span class="ac">2⚡</span></button>
+      </div>
+
+      <div id="test-panel" class="test-panel" hidden>
+        <div class="turn-label">🧪 Test controls</div>
+        <div class="test-row"><span>Next roll</span><div id="test-dice" class="test-dice"></div></div>
+        <div class="test-row">
+          <span>Teleport to</span>
+          <input id="test-square" type="number" min="1" max="99" value="50" aria-label="Square to teleport to" />
+          <button id="test-go" class="btn btn-ghost btn-sm">Go</button>
+          <button id="test-energy" class="btn btn-ghost btn-sm">+1⚡</button>
+        </div>
+      </div>
+
       <ul id="player-list" class="player-list"></ul>
+
+      <details class="legend-box" open>
+        <summary class="turn-label">Board elements</summary>
+        <div id="legend" class="legend"></div>
+      </details>
 
       <div class="log-box">
         <div class="turn-label">Mission log</div>

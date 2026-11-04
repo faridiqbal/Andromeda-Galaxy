@@ -71,5 +71,17 @@ const Sfx = (() => {
         tone(f, 0.35, { type: "triangle", vol: 0.12, delay: i * 0.12 }));
     },
     select() { tone(880, 0.06, { type: "sine", vol: 0.06 }); },
+    ufo() { for (let i = 0; i < 6; i++) tone(600 + (i % 2) * 250, 0.3, { type: "sine", vol: 0.07, to: 900 + (i % 2) * 300, delay: i * 0.28 }); },
+    wormhole() { tone(120, 0.7, { type: "sine", vol: 0.12, to: 1800 }); tone(1800, 0.8, { type: "triangle", vol: 0.06, to: 200, delay: 0.7 }); },
+    comet() { noise(1.3, { vol: 0.12, freq: 6000, to: 2000, q: 1, type: "highpass" }); [1318, 1568, 2093].forEach((f, i) => tone(f, 0.25, { vol: 0.05, delay: 0.2 + i * 0.25 })); },
+    blackhole() { tone(260, 1.4, { type: "sawtooth", vol: 0.06, to: 35 }); noise(1.4, { vol: 0.15, freq: 900, to: 60, q: 0.5, type: "lowpass" }); },
+    asteroid() { noise(0.9, { vol: 0.5, freq: 900, to: 50, q: 0.4, type: "lowpass" }); tone(110, 0.6, { type: "square", vol: 0.08, to: 35 }); },
+    flare() { noise(1.3, { vol: 0.2, freq: 3000, to: 400, q: 0.6 }); tone(500, 1.2, { type: "sawtooth", vol: 0.04, to: 120 }); },
+    crystal() { tone(1568, 0.12, { vol: 0.08 }); tone(2093, 0.18, { vol: 0.07, delay: 0.07 }); },
+    shield() { tone(400, 0.35, { type: "triangle", vol: 0.1, to: 1200 }); tone(1200, 0.3, { vol: 0.05, delay: 0.1 }); },
+    bump() { noise(0.25, { vol: 0.45, freq: 500, q: 0.6, type: "lowpass" }); tone(140, 0.25, { type: "square", vol: 0.08, to: 60 }); },
+    thrust(dir) { noise(0.18, { vol: 0.15, freq: dir > 0 ? 1500 : 700, to: dir > 0 ? 3000 : 300, q: 1 }); },
+    event() { [196, 247, 294, 392].forEach((f, i) => tone(f, 0.9, { type: "sine", vol: 0.08, delay: i * 0.12 })); },
+    error() { tone(160, 0.15, { type: "square", vol: 0.05 }); },
   };
 })();

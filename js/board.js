@@ -1,8 +1,40 @@
-/* Board construction: grid cells, rockets (ladders), space serpents (snakes). */
+/* Board construction: grid cells and the space hazards / boosts that move players. */
 const Board = (() => {
-  // start -> end
-  const ROCKETS = { 4: 14, 9: 31, 21: 42, 28: 76, 36: 44, 51: 67, 71: 91, 80: 99 };
-  const SERPENTS = { 17: 7, 54: 34, 62: 19, 64: 60, 87: 24, 93: 73, 95: 75, 98: 79 };
+  // Every square that moves you: start -> { to, kind }
+  //   UP:   rocket, ufo (tractor beam), wormhole, comet
+  //   DOWN: serpent, blackhole, asteroid, flare (solar flare)
+  const JUMPS = {
+    4: { to: 14, kind: "rocket" },
+    9: { to: 31, kind: "ufo" },
+    12: { to: 33, kind: "comet" },
+    21: { to: 42, kind: "wormhole" },
+    28: { to: 76, kind: "rocket" },
+    36: { to: 57, kind: "comet" },
+    51: { to: 67, kind: "ufo" },
+    71: { to: 91, kind: "rocket" },
+    80: { to: 99, kind: "wormhole" },
+
+    17: { to: 7, kind: "serpent" },
+    48: { to: 26, kind: "flare" },
+    54: { to: 34, kind: "asteroid" },
+    62: { to: 19, kind: "blackhole" },
+    64: { to: 45, kind: "flare" },
+    87: { to: 24, kind: "serpent" },
+    93: { to: 73, kind: "blackhole" },
+    95: { to: 75, kind: "asteroid" },
+    98: { to: 79, kind: "serpent" },
+  };
+
+  const KINDS = {
+    rocket:    { up: true,  icon: "🚀", name: "Rocket",       title: "Rocket boost!",   verb: "rocket-boosted to" },
+    ufo:       { up: true,  icon: "🛸", name: "UFO beam",     title: "Tractor beam!",   verb: "was beamed up by a friendly UFO to" },
+    wormhole:  { up: true,  icon: "🌀", name: "Wormhole",     title: "Wormhole warp!",  verb: "warped through a wormhole to" },
+    comet:     { up: true,  icon: "☄️", name: "Comet ride",   title: "Comet ride!",     verb: "hitched a ride on a comet to" },
+    serpent:   { up: false, icon: "🐍", name: "Space serpent", title: "Space serpent!", verb: "got dragged by a space serpent to" },
+    blackhole: { up: false, icon: "🕳️", name: "Black hole",   title: "Black hole!",     verb: "fell into a black hole and came out at" },
+    asteroid:  { up: false, icon: "🪨", name: "Asteroid",     title: "Asteroid strike!", verb: "was knocked by an asteroid down to" },
+    flare:     { up: false, icon: "☀️", name: "Solar flare",  title: "Solar flare!",    verb: "got blasted by a solar flare down to" },
+  };
 
   const SERPENT_COLORS = [
     ["#ff4f9a", "#7b2ff7"], ["#00e5a8", "#006d77"], ["#ffb703", "#d00000"], ["#9b5de5", "#00bbf9"],
@@ -11,7 +43,7 @@ const Board = (() => {
   const ROCKET_COLORS = ["#ff4d6d", "#4cc9f0", "#ffd166", "#06d6a0", "#b388ff", "#ff9e00", "#00f5d4", "#f72585"];
 
   const NS = "http://www.w3.org/2000/svg";
-  const centrelines = {}; // serpent head -> SVGPathElement
+  const guides = {}; // start square -> invisible SVG path used to animate tokens
 
   /** Cell number (1..100) -> centre in board units (0..1000). */
   function cellXY(n) {
@@ -50,8 +82,7 @@ const Board = (() => {
         `radial-gradient(circle at ${20 + r() * 60}% ${20 + r() * 60}%, hsla(${hue + 30},70%,40%,0.25), transparent 70%),
          linear-gradient(145deg, hsl(${hue},45%,${light}%), hsl(${hue + 15},50%,${light - 6}%))`);
 
-      if (ROCKETS[n]) cell.classList.add("r-start");
-      if (SERPENTS[n]) cell.classList.add("s-head");
+      if (JUMPS[n]) cell.classList.add(KINDS[JUMPS[n].kind].up ? "up-start" : "down-start");
 
       const num = document.createElement("span");
       num.className = "num";
@@ -146,17 +177,207 @@ const Board = (() => {
     el("feMergeNode", { in: "b" }, merge);
     el("feMergeNode", { in: "SourceGraphic" }, merge);
 
-    const rocketLayer = el("g", { class: "rocket-layer" }, svg);
-    const serpentLayer = el("g", { class: "serpent-layer" }, svg);
+    const DRAW = {
+      rocket: drawRocket, ufo: drawUfo, wormhole: drawWormhole, comet: drawComet,
+      serpent: drawSerpent, blackhole: drawBlackhole, asteroid: drawAsteroid, flare: drawFlare,
+    };
+    // draw order: things that sit "under" first
+    const order = ["comet", "flare", "wormhole", "ufo", "rocket", "asteroid", "blackhole", "serpent"];
+    const count = {};
+    for (const kind of order) {
+      const layer = el("g", { class: `layer-${kind}` }, svg);
+      for (const [from, j] of Object.entries(JUMPS)) {
+        if (j.kind !== kind) continue;
+        const i = (count[kind] = (count[kind] || 0) + 1) - 1;
+        DRAW[kind](layer, defs, +from, j.to, i);
+      }
+    }
+  }
 
-    Object.entries(ROCKETS).forEach(([s, e], i) => drawRocket(rocketLayer, defs, +s, e, i));
-    Object.entries(SERPENTS).forEach(([h, t], i) => drawSerpent(serpentLayer, defs, +h, t, i));
+  // ---------- shared geometry ----------
+  /** Quadratic arc from a to b, bulging sideways by `bend` (fraction of length). */
+  function arcD(a, b, bend) {
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+    const cx = (a.x + b.x) / 2 + (-dy / len) * len * bend;
+    const cy = (a.y + b.y) / 2 + (dx / len) * len * bend;
+    return `M${a.x},${a.y} Q${cx.toFixed(1)},${cy.toFixed(1)} ${b.x},${b.y}`;
+  }
+  function guide(g, from, d) { guides[from] = el("path", { d, fill: "none", stroke: "none" }, g); }
+  function group(layer, kind, from) { return el("g", { class: `jump jump-${kind}`, id: `jump-${from}` }, layer); }
+  function grad(defs, id, a, b, stops) {
+    const gr = el("linearGradient", { id, gradientUnits: "userSpaceOnUse", x1: a.x, y1: a.y, x2: b.x, y2: b.y }, defs);
+    stops.forEach(([o, c, op = 1]) => el("stop", { offset: o, "stop-color": c, "stop-opacity": op }, gr));
+    return `url(#${id})`;
+  }
+  function startRing(g, a, color) {
+    el("circle", { cx: a.x, cy: a.y, r: 26, fill: "none", stroke: color, "stroke-width": 3, "stroke-dasharray": "6 5", opacity: 0.8, class: "pad-ring" }, g);
+  }
+
+  // ---------- UFO tractor beam (up) ----------
+  function drawUfo(layer, defs, from, to, i) {
+    const a = cellXY(from), b = cellXY(to);
+    const g = group(layer, "ufo", from);
+    const ux = b.x, uy = b.y - 6;
+    const dx = a.x - ux, dy = a.y - uy, len = Math.hypot(dx, dy);
+    const nx = -dy / len, ny = dx / len;
+    const beam = [
+      [ux + nx * 14, uy + ny * 14], [ux - nx * 14, uy - ny * 14],
+      [a.x - nx * 40, a.y - ny * 40], [a.x + nx * 40, a.y + ny * 40],
+    ].map(q => q.map(v => v.toFixed(1)).join(",")).join(" ");
+    const cid = `ufo-clip-${from}`;
+    const clip = el("clipPath", { id: cid }, defs);
+    el("polygon", { points: beam }, clip);
+    el("polygon", { points: beam, fill: grad(defs, `ub${from}`, { x: ux, y: uy }, a, [["0", "#9dffb0", 0.6], ["1", "#3ee08f", 0.08]]) }, g);
+    // light bands travelling up the beam
+    el("line", { x1: a.x, y1: a.y, x2: ux, y2: uy, stroke: "#c8ffd6", "stroke-width": 90, "stroke-dasharray": "4 26", class: "beam-bands", "clip-path": `url(#${cid})`, opacity: 0.45 }, g);
+    guide(g, from, `M${a.x},${a.y} L${ux},${uy}`);
+    startRing(g, a, "#3ee08f");
+    el("circle", { cx: a.x, cy: a.y, r: 30, fill: "#3ee08f", opacity: 0.15, class: "beam-spot" }, g);
+
+    // saucer
+    const s = el("g", { transform: `translate(${ux},${uy})`, class: "ufo" }, g);
+    const body = el("g", { class: "ufo-bob" }, s);
+    el("ellipse", { cx: 0, cy: -8, rx: 15, ry: 13, fill: "rgba(150,240,255,0.55)", stroke: "#d9fbff", "stroke-width": 1.5 }, body);
+    el("ellipse", { cx: -4, cy: -13, rx: 4, ry: 3, fill: "#fff", opacity: 0.7 }, body);
+    el("ellipse", { cx: 0, cy: 2, rx: 36, ry: 11, fill: grad(defs, `us${from}`, { x: ux, y: uy - 10 }, { x: ux, y: uy + 12 }, [["0", "#eef2ff"], ["0.55", "#9aa5d1"], ["1", "#4b557f"]]), stroke: "#2a3157", "stroke-width": 1.5 }, body);
+    [-24, -8, 8, 24].forEach((x, k) => el("circle", { cx: x, cy: 4, r: 3, fill: k % 2 ? "#ffd166" : "#3ee08f", class: "ufo-light", style: `animation-delay:${k * 0.2}s` }, body));
+  }
+
+  // ---------- Wormhole (up) ----------
+  function portal(g, p, c1, c2, id, defs, reverse) {
+    const rg = el("radialGradient", { id }, defs);
+    el("stop", { offset: "0", "stop-color": "#000" }, rg);
+    el("stop", { offset: "0.45", "stop-color": c2 }, rg);
+    el("stop", { offset: "0.8", "stop-color": c1, "stop-opacity": 0.8 }, rg);
+    el("stop", { offset: "1", "stop-color": c1, "stop-opacity": 0 }, rg);
+    const outer = el("g", { transform: `translate(${p.x},${p.y})` }, g);
+    el("circle", { r: 40, fill: `url(#${id})` }, outer);
+    const spin = el("g", { class: reverse ? "spin-rev" : "spin" }, outer);
+    for (let arm = 0; arm < 3; arm++) {
+      let d = "";
+      for (let k = 0; k <= 26; k++) {
+        const r = 3 + k * 1.25, th = k * 0.32 + (arm * Math.PI * 2) / 3;
+        d += (k ? " L" : "M") + (Math.cos(th) * r).toFixed(1) + "," + (Math.sin(th) * r).toFixed(1);
+      }
+      el("path", { d, fill: "none", stroke: "#fff", "stroke-width": 2.2, "stroke-linecap": "round", opacity: 0.75 }, spin);
+    }
+  }
+  function drawWormhole(layer, defs, from, to, i) {
+    const a = cellXY(from), b = cellXY(to);
+    const g = group(layer, "wormhole", from);
+    const d = arcD(a, b, i % 2 ? 0.28 : -0.28);
+    el("path", { d, fill: "none", stroke: "#c77dff", "stroke-width": 6, opacity: 0.25, filter: "url(#glow)" }, g);
+    el("path", { d, fill: "none", stroke: "#e0c3ff", "stroke-width": 2.5, "stroke-dasharray": "2 12", "stroke-linecap": "round", class: "flow", opacity: 0.8 }, g);
+    guide(g, from, d);
+    portal(g, a, "#36d1ff", "#3a0ca3", `wa${from}`, defs, false);
+    portal(g, b, "#c77dff", "#7209b7", `wb${from}`, defs, true);
+  }
+
+  // ---------- Comet ride (up) ----------
+  function drawComet(layer, defs, from, to, i) {
+    const a = cellXY(from), b = cellXY(to);
+    const g = group(layer, "comet", from);
+    const d = arcD(a, b, i % 2 ? -0.22 : 0.22);
+    const tail = grad(defs, `ct${from}`, a, b, [["0", "#36d1ff", 0], ["0.6", "#7fe7ff", 0.5], ["1", "#ffffff", 1]]);
+    el("path", { d, fill: "none", stroke: "#36d1ff", "stroke-width": 26, "stroke-linecap": "round", opacity: 0.16, filter: "url(#glow)" }, g);
+    el("path", { d, fill: "none", stroke: tail, "stroke-width": 11, "stroke-linecap": "round" }, g);
+    el("path", { d, fill: "none", stroke: "#fff", "stroke-width": 2, "stroke-dasharray": "1 16", "stroke-linecap": "round", class: "flow", opacity: 0.9 }, g);
+    guide(g, from, d);
+    startRing(g, a, "#7fe7ff");
+    // sparkles along the tail
+    const gp = guides[from], L = gp.getTotalLength();
+    for (let k = 1; k <= 5; k++) {
+      const pt = gp.getPointAtLength(L * (k / 7));
+      el("circle", { cx: pt.x + ((k * 13) % 17) - 8, cy: pt.y + ((k * 7) % 15) - 7, r: 2, fill: "#fff", class: "twinkle", style: `animation-delay:${k * 0.3}s` }, g);
+    }
+    // icy head at destination
+    const hg = el("radialGradient", { id: `ch${from}` }, defs);
+    el("stop", { offset: "0", "stop-color": "#fff" }, hg);
+    el("stop", { offset: "0.5", "stop-color": "#bdf3ff" }, hg);
+    el("stop", { offset: "1", "stop-color": "#36d1ff", "stop-opacity": 0 }, hg);
+    el("circle", { cx: b.x, cy: b.y, r: 30, fill: `url(#ch${from})`, class: "comet-head" }, g);
+    el("circle", { cx: b.x, cy: b.y, r: 9, fill: "#fff" }, g);
+  }
+
+  // ---------- Black hole (down) ----------
+  function drawBlackhole(layer, defs, from, to, i) {
+    const a = cellXY(from), b = cellXY(to);
+    const g = group(layer, "blackhole", from);
+    const d = arcD(a, b, i % 2 ? 0.2 : -0.2);
+    el("path", { d, fill: "none", stroke: "#ff7b54", "stroke-width": 2.5, "stroke-dasharray": "3 10", "stroke-linecap": "round", opacity: 0.55, class: "flow" }, g);
+    guide(g, from, d);
+    // exit (where you get spat out)
+    el("circle", { cx: b.x, cy: b.y, r: 22, fill: "none", stroke: "#ff7b54", "stroke-width": 2.5, "stroke-dasharray": "4 6", opacity: 0.8, class: "pad-ring" }, g);
+    el("circle", { cx: b.x, cy: b.y, r: 5, fill: "#ff7b54", opacity: 0.7 }, g);
+    // the black hole itself
+    const o = el("g", { transform: `translate(${a.x},${a.y})` }, g);
+    const glowG = el("radialGradient", { id: `bg${from}` }, defs);
+    el("stop", { offset: "0.35", "stop-color": "#ffb347", "stop-opacity": 0.9 }, glowG);
+    el("stop", { offset: "0.6", "stop-color": "#ff4f00", "stop-opacity": 0.35 }, glowG);
+    el("stop", { offset: "1", "stop-color": "#ff4f00", "stop-opacity": 0 }, glowG);
+    el("circle", { r: 46, fill: `url(#bg${from})` }, o);
+    const disk = el("g", { transform: "rotate(-18) scale(1,0.34)" }, o);
+    const spin = el("g", { class: "spin-fast" }, disk);
+    el("circle", { r: 40, fill: "none", stroke: "#ffd08a", "stroke-width": 9, "stroke-dasharray": "30 8 12 6", opacity: 0.9 }, spin);
+    el("circle", { r: 30, fill: "none", stroke: "#ff7b54", "stroke-width": 5, "stroke-dasharray": "18 6", opacity: 0.8 }, spin);
+    el("circle", { r: 19, fill: "#000", stroke: "#ffe2b0", "stroke-width": 2 }, o);
+  }
+
+  // ---------- Asteroid strike (down) ----------
+  function drawAsteroid(layer, defs, from, to, i) {
+    const a = cellXY(from), b = cellXY(to);
+    const g = group(layer, "asteroid", from);
+    // ballistic arc: up and over, then down to the crater
+    const cx = (a.x + b.x) / 2 + (i % 2 ? 60 : -60), cy = Math.max(10, Math.min(a.y, b.y) - 90);
+    const d = `M${a.x},${a.y} Q${cx},${cy} ${b.x},${b.y}`;
+    el("path", { d, fill: "none", stroke: "#ffb347", "stroke-width": 2.5, "stroke-dasharray": "8 8", opacity: 0.55, class: "flow" }, g);
+    guide(g, from, d);
+    // crater at landing square
+    el("ellipse", { cx: b.x, cy: b.y + 8, rx: 26, ry: 10, fill: "rgba(0,0,0,0.45)", stroke: "#ff9e00", "stroke-width": 2, opacity: 0.8 }, g);
+    // flaming rock incoming from the top-right of the start square
+    const r = prng(from * 7);
+    const o = el("g", { transform: `translate(${a.x + 4},${a.y - 4})`, class: "asteroid" }, g);
+    el("path", { d: "M-15,6 Q28,-38 72,-72 Q38,-28 6,15 Z", fill: grad(defs, `af${from}`, { x: a.x + 70, y: a.y - 70 }, { x: a.x, y: a.y }, [["0", "#ff4f00", 0], ["0.6", "#ff9e00", 0.7], ["1", "#fff3c4", 1]]), class: "asteroid-fire" }, o);
+    let pts = [];
+    for (let k = 0; k < 10; k++) {
+      const th = (k / 10) * Math.PI * 2, rr = 17 + r() * 8;
+      pts.push(`${(Math.cos(th) * rr).toFixed(1)},${(Math.sin(th) * rr).toFixed(1)}`);
+    }
+    el("polygon", { points: pts.join(" "), fill: grad(defs, `ar${from}`, { x: a.x - 20, y: a.y - 20 }, { x: a.x + 20, y: a.y + 20 }, [["0", "#a7927e"], ["1", "#4a3a30"]]), stroke: "#2b211b", "stroke-width": 2 }, o);
+    el("circle", { cx: -6, cy: -4, r: 4, fill: "#3b2e26", opacity: 0.8 }, o);
+    el("circle", { cx: 6, cy: 6, r: 3, fill: "#3b2e26", opacity: 0.8 }, o);
+    el("circle", { cx: 7, cy: -7, r: 2, fill: "#3b2e26", opacity: 0.8 }, o);
+  }
+
+  // ---------- Solar flare (down) ----------
+  function drawFlare(layer, defs, from, to, i) {
+    const a = cellXY(from), b = cellXY(to);
+    const g = group(layer, "flare", from);
+    const d = arcD(a, b, i % 2 ? 0.35 : -0.35);
+    const plasma = grad(defs, `fp${from}`, a, b, [["0", "#fff3c4"], ["0.3", "#ffb347"], ["1", "#ff2e63", 0.5]]);
+    el("path", { d, fill: "none", stroke: "#ff6b35", "stroke-width": 22, opacity: 0.2, filter: "url(#glow)", "stroke-linecap": "round" }, g);
+    el("path", { d, fill: "none", stroke: plasma, "stroke-width": 9, "stroke-linecap": "round", class: "flare-plasma" }, g);
+    el("path", { d, fill: "none", stroke: "#fff", "stroke-width": 2, "stroke-dasharray": "3 14", "stroke-linecap": "round", class: "flow", opacity: 0.7 }, g);
+    guide(g, from, d);
+    el("circle", { cx: b.x, cy: b.y, r: 18, fill: "none", stroke: "#ff2e63", "stroke-width": 2.5, "stroke-dasharray": "4 5", opacity: 0.8 }, g);
+    // the little sun
+    const o = el("g", { transform: `translate(${a.x},${a.y})` }, g);
+    const rays = el("g", { class: "spin" }, o);
+    for (let k = 0; k < 12; k++) {
+      const th = (k / 12) * Math.PI * 2;
+      el("line", { x1: Math.cos(th) * 24, y1: Math.sin(th) * 24, x2: Math.cos(th) * (k % 2 ? 33 : 38), y2: Math.sin(th) * (k % 2 ? 33 : 38), stroke: "#ffd166", "stroke-width": 3, "stroke-linecap": "round" }, rays);
+    }
+    const sg = el("radialGradient", { id: `fs${from}`, cx: "40%", cy: "35%" }, defs);
+    el("stop", { offset: "0", "stop-color": "#fffbe0" }, sg);
+    el("stop", { offset: "0.5", "stop-color": "#ffc23d" }, sg);
+    el("stop", { offset: "1", "stop-color": "#ff6b35" }, sg);
+    el("circle", { r: 21, fill: `url(#fs${from})`, filter: "url(#glow)", class: "sun-pulse" }, o);
   }
 
   function drawRocket(layer, defs, from, to, i) {
     const a = cellXY(from), b = cellXY(to);
     const color = ROCKET_COLORS[i % ROCKET_COLORS.length];
-    const g = el("g", { class: "rocket-group", id: `rocket-${from}` }, layer);
+    const g = group(layer, "rocket", from);
 
     const gid = `rg${from}`;
     const grad = el("linearGradient", { id: gid, gradientUnits: "userSpaceOnUse", x1: a.x, y1: a.y, x2: b.x, y2: b.y }, defs);
@@ -168,6 +389,7 @@ const Board = (() => {
     el("circle", { cx: a.x, cy: a.y, r: 26, fill: "none", stroke: color, "stroke-width": 3, "stroke-dasharray": "6 5", opacity: 0.8 }, g);
     el("circle", { cx: a.x, cy: a.y, r: 8, fill: color, opacity: 0.6 }, g);
 
+    guide(g, from, `M${a.x},${a.y} L${b.x},${b.y}`);
     // exhaust trail
     el("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: `url(#${gid})`, "stroke-width": 16, "stroke-linecap": "round", filter: "url(#glow)" }, g);
     el("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: "#fff", "stroke-width": 3, "stroke-linecap": "round", class: "rocket-trail-dash", opacity: 0.7 }, g);
@@ -191,7 +413,7 @@ const Board = (() => {
   function drawSerpent(layer, defs, head, tail, i) {
     const a = cellXY(head), b = cellXY(tail);
     const [c1, c2] = SERPENT_COLORS[i % SERPENT_COLORS.length];
-    const g = el("g", { class: "serpent-group", id: `serpent-${head}` }, layer);
+    const g = group(layer, "serpent", head);
 
     const dx = b.x - a.x, dy = b.y - a.y;
     const len = Math.hypot(dx, dy);
@@ -232,7 +454,7 @@ const Board = (() => {
     // starry scale pattern along the spine
     el("path", { d: centre, fill: "none", stroke: "rgba(255,255,255,0.55)", "stroke-width": 4, "stroke-dasharray": "2 14", "stroke-linecap": "round" }, g);
     // centreline used to animate tokens sliding down
-    centrelines[head] = el("path", { d: centre, fill: "none", stroke: "none" }, g);
+    guide(g, head, centre);
 
     // Head
     const hx = pts[0].x, hy = pts[0].y;
@@ -248,12 +470,12 @@ const Board = (() => {
     }
   }
 
-  /** Point along a serpent's body; t in 0..1 from head to tail. */
-  function serpentPoint(head, t) {
-    const p = centrelines[head];
+  /** Point along the path of the jump starting at `from`; t in 0..1. */
+  function pathPoint(from, t) {
+    const p = guides[from];
     const pt = p.getPointAtLength(p.getTotalLength() * t);
     return { x: pt.x, y: pt.y };
   }
 
-  return { ROCKETS, SERPENTS, cellXY, build, serpentPoint };
+  return { JUMPS, KINDS, cellXY, build, pathPoint };
 })();
