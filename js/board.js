@@ -92,7 +92,7 @@ const Board = (() => {
     for (const up of [true, false]) {
       const kinds = Object.keys(KINDS).filter(k => KINDS[k].up === up);
       kinds.forEach(k => (counts[k] = 1));
-      for (let i = kinds.length; i < PER_SIDE; i++) counts[kinds[Math.floor(Math.random() * kinds.length)]]++;
+      for (let i = kinds.length; i < PER_SIDE; i++) counts[kinds[Math.floor(Rng.random() * kinds.length)]]++;
     }
     return counts;
   }
@@ -111,10 +111,10 @@ const Board = (() => {
       const guardSquares = FINAL_GUARD.filter(n => !avoid.includes(n));
       if (!guardSquares.length) return null;
       const hazardPool = kinds.filter(k => !KINDS[k].up).flatMap(k => Array(COUNTS[k]).fill(k));
-      const gk = hazardPool[Math.floor(Math.random() * hazardPool.length)];
-      const gFrom = guardSquares[Math.floor(Math.random() * guardSquares.length)];
+      const gk = hazardPool[Math.floor(Rng.random() * hazardPool.length)];
+      const gFrom = guardSquares[Math.floor(Rng.random() * guardSquares.length)];
       const [glo, ghi] = REACH[gk];
-      const gTo = gFrom - (glo + Math.floor(Math.random() * (ghi - glo + 1)));
+      const gTo = gFrom - (glo + Math.floor(Rng.random() * (ghi - glo + 1)));
       out[gFrom] = { to: gTo, kind: gk };
       used.add(gFrom); used.add(gTo); starts.add(gFrom);
       perRow[rowOf(gFrom)]++; perRow[rowOf(gTo)]++;
@@ -125,9 +125,9 @@ const Board = (() => {
           let placed = false;
           for (let t = 0; t < 300 && !placed; t++) {
             const [lo, hi] = REACH[kind];
-            const dist = lo + Math.floor(Math.random() * (hi - lo + 1));
+            const dist = lo + Math.floor(Rng.random() * (hi - lo + 1));
             const up = KINDS[kind].up;
-            const from = up ? 2 + Math.floor(Math.random() * (99 - dist - 1)) : dist + 2 + Math.floor(Math.random() * (98 - dist - 1));
+            const from = up ? 2 + Math.floor(Rng.random() * (99 - dist - 1)) : dist + 2 + Math.floor(Rng.random() * (98 - dist - 1));
             const to = up ? from + dist : from - dist;
             if (from < 2 || from > 99 || to < 2 || to > 99) continue;
             if (used.has(from) || used.has(to) || avoid.includes(from)) continue;
@@ -136,7 +136,7 @@ const Board = (() => {
             if (perRow[rowOf(from)] >= MAX_PER_ROW || perRow[rowOf(to)] >= MAX_PER_ROW) continue;
             // prefer quieter rows so the limit is easy to meet
             const load = perRow[rowOf(from)] + perRow[rowOf(to)];
-            if (load > 3 && Math.random() < 0.6) continue;
+            if (load > 3 && Rng.random() < 0.6) continue;
             out[from] = { to, kind };
             used.add(from); used.add(to); starts.add(from);
             perRow[rowOf(from)]++; perRow[rowOf(to)]++;

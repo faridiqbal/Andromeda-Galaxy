@@ -46,6 +46,11 @@
   let turnToken = 0;           // guards delayed callbacks from older turns
 
   const cur = () => players[current];
+  let online = null;          // { mySeat } while playing an online mission
+  let rollSeq = 0;            // throws made so far this game (online commands are numbered by it)
+  let decideSeq = 0;          // finish decisions made so far this game
+  let rollRequested = false;  // online: this device already asked to throw this turn
+  const isMyTurn = () => !online || (players.length && current === online.mySeat);
   const active = () => players.filter(p => !p.finished);
   const newStats = () => ({ rolls: 0, sixes: 0, pips: 0, boosts: 0, boostGain: 0, hazards: 0, hazardLoss: 0, biggestBoost: 0, longestFall: 0, rams: 0, bumped: 0, bounces: 0 });
   const chip = p => p.el.querySelector(".chip");
@@ -136,16 +141,23 @@
   // ==================================================================
   //  GAME START / RESET
   // ==================================================================
-  function startGame() {
+  function startGame(net = null) {
     Sfx.unlock();
     Music.start();
     Music.setIntensity(1);
-    players = crew.slice(0, count).map((c, i) => ({
+    online = net ? { mySeat: net.mySeat } : null;
+    Rng.seed(net ? net.seed : Rng.newSeed()); // same seed on every device = same game everywhere
+    rollSeq = 0; decideSeq = 0; rollRequested = false;
+    const roster = net
+      ? net.roster.map((r, i) => ({ name: r.name, avatar: r.avatar, color: COLORS[i], cpu: false }))
+      : crew.slice(0, count);
+    players = roster.map((c, i) => ({
       id: i,
       name: (c.name || "").trim() || `Commander ${DEFAULT_NAMES[i]}`,
       emoji: AVATARS[c.avatar].e,
       color: c.color,
       cpu: c.cpu,
+      offline: false,
       pos: 1,
       finished: false, place: null, finishRound: null,
       stats: newStats(),
@@ -164,7 +176,9 @@
     window.scrollTo(0, 0); // the setup screen may have been scrolled; start with the board in view
     $("#log").innerHTML = "";
     $("#dice-result").textContent = "–";
-    $("#test-panel").hidden = !testMode;
+    $("#test-panel").hidden = !testMode || !!online;
+    $("#net-badge").hidden = !online;
+    if (online) $("#net-badge").textContent = `🌐 Room ${Net.code} · ${Net.isHost ? "Host" : "Online"}`;
 
     Board.randomize();       // a fresh random layout every game
     setupAmbientParticles();
@@ -183,6 +197,10 @@
   function backToSetup() {
     phase = "idle";
     turnToken++;
+    const wasOnline = !!online;
+    online = null;
+    $("#net-badge").hidden = true;
+    if (wasOnline) showOnlineEntry();
     Music.setIntensity(0);
     $("#win-modal").classList.remove("open");
     $("#results-modal").classList.remove("open");
@@ -482,16 +500,34 @@
   async function beginTurn() {
     const token = ++turnToken;
     phase = "roll";
+    rollRequested = false;
     const p = cur();
     layoutTokens();
     updatePanel();
     if (!extraRoll) Sfx.turn();
     setMeta();
-    setStatus(`${extraRoll ? "AFTERBURNER: " : ""}${p.name.toUpperCase()} · ${p.cpu ? "CPU PILOT PREPARING THROW" : "AWAITING THROW"}`,
-      `${p.emoji} Square ${p.pos} · ${GOAL - p.pos} to Andromeda${p.cpu ? "" : " · hold the button or Space to throw"}`);
+    if (online && !isMyTurn()) {
+      setStatus(`${extraRoll ? "AFTERBURNER: " : ""}WAITING FOR ${p.name.toUpperCase()}'S THROW`,
+        `${p.emoji} Square ${p.pos} · ${GOAL - p.pos} to Andromeda${p.offline ? " · offline, the host throws for them" : ""}`);
+    } else {
+      setStatus(`${extraRoll ? "AFTERBURNER: " : ""}${online ? "YOUR TURN" : p.name.toUpperCase()} · ${p.cpu ? "CPU PILOT PREPARING THROW" : "AWAITING THROW"}`,
+        `${p.emoji} Square ${p.pos} · ${GOAL - p.pos} to Andromeda${p.cpu ? "" : " · hold the button or Space to throw"}`);
+      if (online && !extraRoll) { try { navigator.vibrate && navigator.vibrate(120); } catch { /* not supported */ } }
+    }
     Particles.ring(p.x, p.y, p.color, 70, 0.8);
     // cinematic swoop: zoom in on whose turn it is, then pull back for the dice
     Camera.focus(p.x, p.y, 2.1);
+    if (online) {
+      // the host throws for anyone who has disconnected
+      const seq = rollSeq, seat = current;
+      if (Net.isHost && !Net.seatOnline(seat)) setTimeout(() => Net.requestRoll(seq, seat, 0.5), 1400);
+      setTimeout(() => { if (token === turnToken) Camera.overview(); }, 950);
+      if (isMyTurn()) $("#roll-btn").focus({ preventScroll: true });
+      const cmd = await Net.nextRoll(seq);
+      if (token !== turnToken || phase !== "roll" || !online) return;
+      onRoll(cmd.power);
+      return;
+    }
     await sleep(950);
     if (token !== turnToken || phase !== "roll") return;
     Camera.overview();
@@ -508,7 +544,7 @@
   let charge = null;
   const chargePower = () => Math.min(1, 0.15 + ((performance.now() - charge.t0) / CHARGE_MS) * 0.85);
   function startCharge() {
-    if (phase !== "roll" || !players.length || cur().cpu || charge) return;
+    if (phase !== "roll" || !players.length || cur().cpu || charge || !isMyTurn() || rollRequested) return;
     Sfx.unlock();
     charge = { t0: performance.now(), step: -1, raf: 0 };
     setStatus("CHARGING THROW…", "Release to throw. Longer hold = harder throw");
@@ -532,7 +568,18 @@
     const rb = $("#roll-btn");
     rb.classList.remove("charging");
     rb.style.setProperty("--pow", 0);
-    if (throwIt) onRoll(pw);
+    if (throwIt) requestRoll(pw);
+  }
+
+  /** Throw the dice: directly when playing on one device, via the host when online. */
+  function requestRoll(power) {
+    if (phase !== "roll" || !players.length || cur().cpu) return;
+    if (!online) return onRoll(power);
+    if (!isMyTurn() || rollRequested) return;
+    rollRequested = true;
+    refreshControls();
+    setStatus("THROW SENT · SYNCING WITH THE CREW…");
+    Net.requestRoll(rollSeq, current, power);
   }
 
   async function onRoll(power = 0.5) {
@@ -550,7 +597,8 @@
     }
 
     const p = cur();
-    let value = 1 + Math.floor(Math.random() * 6);
+    rollSeq++;
+    let value = 1 + Math.floor(Rng.random() * 6);
     if (forcedRoll) { value = forcedRoll; forcedRoll = null; renderTestDice(); }
     const res = $("#dice-result");
     res.textContent = "…";
@@ -735,7 +783,7 @@
   const TURN_GAP = 500; // pause after a turn finishes before the next player starts
 
   function scheduleNextEvent() {
-    nextEventRound = round + EVENT_GAP[0] + Math.floor(Math.random() * (EVENT_GAP[1] - EVENT_GAP[0] + 1));
+    nextEventRound = round + EVENT_GAP[0] + Math.floor(Rng.random() * (EVENT_GAP[1] - EVENT_GAP[0] + 1));
   }
   const roundsToEvent = () => Math.max(0, nextEventRound - round);
 
@@ -804,7 +852,7 @@
     const racing = active();
     const spread = new Set(racing.map(p => p.pos)).size > 1;
     if (!spread) pool = EVENTS.filter(e => e.id !== "swap");
-    const ev = EVENTS.find(e => e.id === forcedId) || pool[Math.floor(Math.random() * pool.length)];
+    const ev = EVENTS.find(e => e.id === forcedId) || pool[Math.floor(Rng.random() * pool.length)];
     phase = "moving";
     refreshControls();
     Camera.overview();
@@ -846,7 +894,7 @@
       for (const p of racing) Particles.ring(p.x, p.y, "#7b2ff7", 70, 0.7);
       for (const p of racing) await moveBy(p, -2);
     } else if (ev.id === "meteor") {
-      const v = racing[Math.floor(Math.random() * racing.length)];
+      const v = racing[Math.floor(Rng.random() * racing.length)];
       Camera.focus(v.x, v.y, 2.2);
       for (let i = 0; i < 12; i++) {
         setTimeout(() => Particles.emit(v.x + 200, v.y - 260, { ...Particles.FX.fire, count: 3, angle: Math.atan2(260, -200), spread: 0.15, speed: [500, 600], life: [0.45, 0.5], shape: "streak", size: [4, 7], drag: 1 }), i * 60);
@@ -953,6 +1001,26 @@
       $("#win-text").innerHTML = `<strong>${escapeHtml(p.name)}</strong> warped all the way to the <strong>Andromeda Galaxy</strong> in round ${round}!<br>
         ${racing.length} commanders are still racing for ${ordinal(p.place + 1)} place.`;
       const acts = $("#win-actions");
+      if (online) {
+        const seq = decideSeq;
+        acts.innerHTML = Net.isHost
+          ? `<button class="btn btn-primary" id="continue-btn">Continue race 🚀</button>
+             <button class="btn btn-ghost" id="end-btn">End & see results</button>`
+          : `<p class="muted">Waiting for the host to continue the race or end it…</p>`;
+        $("#win-modal").classList.add("open");
+        if (Net.isHost) {
+          $("#continue-btn").onclick = () => Net.decide(seq, "continue");
+          $("#end-btn").onclick = () => Net.decide(seq, "end");
+          $("#continue-btn").focus();
+        }
+        Net.nextDecision(seq).then(cmd => {
+          decideSeq++;
+          $("#win-modal").classList.remove("open");
+          if (cmd.choice === "end") { endRace(); resolve("ended"); }
+          else { log(`🏁 The race continues for ${ordinal(p.place + 1)} place.`); updateIntensity(); resolve("continue"); }
+        });
+        return;
+      }
       acts.innerHTML = `
         <button class="btn btn-primary" id="continue-btn">Continue race 🚀</button>
         <button class="btn btn-ghost" id="end-btn">End & see results</button>`;
@@ -1023,8 +1091,13 @@
           <td class="${net >= 0 ? "up" : "down"}">${net >= 0 ? "+" : "−"}${Math.abs(net)}</td><td>${s.rams}</td><td>${s.bumped}</td></tr>`;
       }).join("")}</tbody>`;
     $("#results-sub").textContent = `Mission lasted ${round} round${round > 1 ? "s" : ""}.`;
+    // online: only the host can start the next mission
+    const again = $("#again-btn");
+    again.hidden = !!online && !Net.isHost;
+    $("#results-wait").hidden = !online || Net.isHost;
+    $("#newcrew-btn").textContent = online ? "Leave room" : "New crew";
     $("#results-modal").classList.add("open");
-    $("#again-btn").focus();
+    (again.hidden ? $("#newcrew-btn") : again).focus();
   }
 
   function celebrate(color) {
@@ -1046,7 +1119,9 @@
     const p = cur();
     const rb = $("#roll-btn");
     rb.innerHTML = `<span>${extraRoll && phase === "roll" ? "Hold to roll again 🔥" : p && p.cpu && phase === "roll" ? "CPU is rolling…" : "Hold to throw 🎲"}</span><kbd>Space</kbd>`;
-    rb.disabled = !p || p.cpu || phase !== "roll";
+    rb.disabled = !p || p.cpu || phase !== "roll" || (online && (!isMyTurn() || rollRequested));
+    if (online && p && phase === "roll" && !isMyTurn()) rb.innerHTML = `<span>Waiting for ${escapeHtml(p.name)}…</span>`;
+    else if (online && rollRequested && phase === "roll") rb.innerHTML = `<span>Throwing…</span>`;
   }
 
   function updatePanel() {
@@ -1075,7 +1150,7 @@
       li.innerHTML = `
         <div class="crew-badge" style="--pc:${pl.color}">${pl.emoji}</div>
         <div style="min-width:0">
-          <div class="pl-name">${escapeHtml(pl.name)} ${pl.cpu ? '<span class="tag">CPU</span>' : ""}</div>
+          <div class="pl-name">${escapeHtml(pl.name)} ${pl.cpu ? '<span class="tag">CPU</span>' : ""}${online && i === online.mySeat ? '<span class="tag you">YOU</span>' : ""}${pl.offline ? '<span class="tag off">OFFLINE</span>' : ""}</div>
           <div class="pl-bar"><span style="width:${pl.pos}%"></span></div>
         </div>
         <div class="pl-pos">${pl.finished ? `<small>${ordinal(pl.place)}</small>${MEDALS[pl.place - 1] || "🏁"}` : `<small>#${ranked.indexOf(pl) + 1}</small>${pl.pos}`}</div>`;
@@ -1226,6 +1301,133 @@
   }
 
   // ==================================================================
+  //  ONLINE SETUP & LOBBY
+  // ==================================================================
+  const profile = (() => {
+    try { const p = JSON.parse(localStorage.getItem("aq-profile") || "null"); if (p && typeof p.name === "string") return p; } catch { /* storage blocked */ }
+    return { name: "", avatar: Math.floor(Math.random() * 10) };
+  })();
+  const saveProfile = () => { try { localStorage.setItem("aq-profile", JSON.stringify(profile)); } catch { /* storage blocked */ } };
+
+  function setMode(isOnline) {
+    $("#tab-local").classList.toggle("active", !isOnline);
+    $("#tab-online").classList.toggle("active", isOnline);
+    $("#tab-local").setAttribute("aria-selected", String(!isOnline));
+    $("#tab-online").setAttribute("aria-selected", String(isOnline));
+    $("#local-setup").hidden = isOnline;
+    $("#local-setup-2").hidden = isOnline;
+    $("#online-setup").hidden = !isOnline;
+    if (isOnline) renderProfile();
+  }
+
+  function renderProfile() {
+    const box = $("#online-profile");
+    box.style.setProperty("--pc", COLORS[0]);
+    box.innerHTML = `
+      <div class="crew-badge">${AVATARS[profile.avatar].e}</div>
+      <input type="text" maxlength="16" placeholder="Your name" aria-label="Your name" value="${escapeHtml(profile.name)}" />
+      <div class="avatar-grid" role="group" aria-label="Your emblem">${AVATARS.map((a, k) =>
+        `<button type="button" class="avatar-opt" data-k="${k}" title="${a.n}" aria-label="${a.n}" aria-pressed="${k === profile.avatar}">${a.e}</button>`).join("")}</div>`;
+    box.style.animation = "none";
+    const input = box.querySelector("input");
+    input.oninput = () => { profile.name = input.value; saveProfile(); };
+    box.querySelectorAll(".avatar-opt").forEach(b => (b.onclick = () => { profile.avatar = +b.dataset.k; saveProfile(); Sfx.select(); renderProfile(); }));
+  }
+
+  const myProfile = () => ({ name: (profile.name || "").trim() || "Commander", avatar: profile.avatar });
+  function onlineError(msg) { $("#online-error").textContent = msg || ""; }
+  function showOnlineEntry() {
+    $("#online-entry").hidden = false;
+    $("#lobby").hidden = true;
+    $("#online-profile").classList.remove("locked");
+  }
+
+  function renderLobby(list) {
+    $("#lobby-list").innerHTML = list.map((l, i) => `
+      <li style="--pc:${COLORS[i]}">
+        <span class="crew-badge" style="--pc:${COLORS[i]}">${AVATARS[l.avatar].e}</span>
+        <span class="lb-name">${escapeHtml(l.name)}</span>
+        ${l.host ? '<span class="tag">HOST</span>' : ""}${l.you ? '<span class="tag you">YOU</span>' : ""}
+      </li>`).join("") + Array.from({ length: Math.max(0, 5 - list.length) }, () => `<li class="empty"><span class="crew-badge">·</span><span class="lb-name">Waiting for a commander…</span></li>`).join("");
+    const isHost = Net.isHost;
+    $("#lobby-start").hidden = !isHost;
+    $("#lobby-start").disabled = list.length < 2;
+    $("#lobby-hint").textContent = isHost
+      ? (list.length < 2 ? "Share the room code. You can launch once at least one more commander joins." : `${list.length} commanders ready. Launch when everyone is in!`)
+      : "You're in! Waiting for the host to launch the mission…";
+  }
+
+  function setupOnline() {
+    $("#tab-local").onclick = () => { Sfx.click(); setMode(false); };
+    $("#tab-online").onclick = () => { Sfx.click(); setMode(true); };
+    const codeIn = $("#room-code");
+    codeIn.oninput = () => { codeIn.value = codeIn.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); };
+    $("#create-room").onclick = () => { onlineError(""); Sfx.unlock(); Music.start(); setLobbyBusy("Opening a room…"); Net.host(myProfile()); };
+    const join = () => {
+      if (codeIn.value.length !== 5) { onlineError("Enter the 5-character room code."); return Sfx.error(); }
+      onlineError(""); Sfx.unlock(); Music.start(); setLobbyBusy("Connecting…");
+      Net.join(codeIn.value, myProfile());
+    };
+    $("#join-room").onclick = join;
+    codeIn.onkeydown = e => { if (e.key === "Enter") join(); };
+    $("#lobby-start").onclick = () => Net.startGame();
+    $("#lobby-leave").onclick = () => { Net.leave(true); showOnlineEntry(); };
+    $("#copy-code").onclick = async () => {
+      try { await navigator.clipboard.writeText(Net.code); $("#copy-code").textContent = "Copied!"; }
+      catch { $("#copy-code").textContent = Net.code; }
+      setTimeout(() => ($("#copy-code").textContent = "Copy code"), 1500);
+    };
+
+    Net.on("room", r => {
+      $("#online-entry").hidden = true;
+      $("#lobby").hidden = false;
+      $("#online-profile").classList.add("locked");
+      $("#lobby-code").textContent = r.code;
+    });
+    Net.on("lobby", renderLobby);
+    Net.on("error", msg => {
+      if (online && !Net.online) { alert(msg); backToSetup(); onlineError(msg); return; }
+      onlineError(msg);
+      Sfx.error();
+      if (!Net.online) showOnlineEntry();
+      $("#create-room").disabled = false; $("#join-room").disabled = false;
+    });
+    Net.on("start", m => {
+      Sfx.select();
+      startGame({ seed: m.seed, roster: m.roster, mySeat: m.mySeat });
+    });
+    Net.on("left", seat => {
+      const p = players[seat];
+      if (!online || !p) return;
+      p.offline = true;
+      log(`📡 ${p.name} lost connection. The host will throw for them.`, p.color);
+      updatePanel();
+      if (Net.isHost && current === seat && phase === "roll") Net.requestRoll(rollSeq, seat, 0.5);
+    });
+    Net.on("closed", reason => {
+      if (online) {
+        alert(`${reason || "The online mission ended."}`);
+        backToSetup();
+      } else {
+        showOnlineEntry();
+        if (reason) onlineError(reason);
+      }
+    });
+
+    // invite links like ...?room=ABCDE open straight onto the online tab
+    const room = new URLSearchParams(location.search).get("room");
+    if (room) { setMode(true); codeIn.value = room.toUpperCase().slice(0, 5); }
+  }
+  function setLobbyBusy(text) {
+    $("#online-entry").hidden = true;
+    $("#lobby").hidden = false;
+    $("#lobby-hint").textContent = text;
+    $("#lobby-list").innerHTML = "";
+    $("#lobby-code").textContent = "·····";
+    $("#lobby-start").hidden = true;
+  }
+
+  // ==================================================================
   //  TEST MODE
   // ==================================================================
   function renderTestDice() {
@@ -1281,18 +1483,20 @@
     // button click sounds
     document.addEventListener("click", e => { if (e.target.closest(".btn, .icon-btn, .cpu-toggle, .count-picker button")) Sfx.click(); });
 
-    $("#launch-btn").onclick = startGame;
+    $("#launch-btn").onclick = () => startGame();
     const rb = $("#roll-btn");
     rb.addEventListener("pointerdown", e => { if (e.button === 0 || e.pointerType !== "mouse") { e.preventDefault(); startCharge(); } });
     rb.addEventListener("pointerup", () => endCharge(true));
     rb.addEventListener("pointerleave", () => endCharge(true));
     rb.addEventListener("pointercancel", () => endCharge(false));
     rb.addEventListener("contextmenu", e => e.preventDefault());
-    $("#again-btn").onclick = startGame;
-    $("#newcrew-btn").onclick = backToSetup;
+    $("#again-btn").onclick = () => (online ? Net.startGame() : startGame());
+    $("#newcrew-btn").onclick = () => { if (online) Net.leave(true); backToSetup(); };
     $("#restart-btn").onclick = () => {
-      if (phase === "over" || confirm("Abort this mission and return to crew setup?")) backToSetup();
+      const q = online ? (Net.isHost ? "End this online mission for everyone?" : "Leave this online mission?") : "Abort this mission and return to crew setup?";
+      if (phase === "over" || confirm(q)) { if (online) Net.leave(true); backToSetup(); }
     };
+    setupOnline();
     $("#mute-btn").onclick = e => { e.currentTarget.textContent = Sfx.toggle() ? "🔇" : "🔊"; e.currentTarget.classList.toggle("off", Sfx.muted); };
     $("#music-btn").onclick = e => { const on = Music.toggle(); e.currentTarget.classList.toggle("off", !on); e.currentTarget.title = on ? "Music on" : "Music off"; };
     $("#test-go").onclick = testTeleport;
@@ -1333,7 +1537,7 @@
         e.preventDefault();
         if (!players.length || cur().cpu) return;
         if (e.code === "Space") { if (!e.repeat) startCharge(); }
-        else onRoll(0.5); // Enter: quick throw
+        else requestRoll(0.5); // Enter: quick throw
       } else if (e.key === "f" || e.key === "F") toggleFullscreen();
       else if (e.key === "+" || e.key === "=") Camera.zoomAt(1.3);
       else if (e.key === "-") Camera.zoomAt(1 / 1.3);
@@ -1343,7 +1547,7 @@
     document.addEventListener("keyup", e => { if (e.code === "Space") { e.preventDefault(); endCharge(true); } });
 
     // tiny hook for automated tests
-    window.__aq = { get state() { return { phase, current, round, nextEventRound, players: players.map(p => ({ pos: p.pos, finished: p.finished, place: p.place, stats: p.stats })) }; } };
+    window.__aq = { teleport: (seat, n) => { if (players[seat]) { players[seat].pos = n; layoutTokens(true); updatePanel(); } }, get state() { return { phase, current, round, nextEventRound, online: online && { ...online, rollSeq, code: Net.code, host: Net.isHost }, players: players.map(p => ({ name: p.name, pos: p.pos, finished: p.finished, place: p.place, offline: p.offline, stats: p.stats })), board: JSON.stringify(Board.JUMPS) + JSON.stringify(Board.BEACONS) }; } };
   }
 
   init();

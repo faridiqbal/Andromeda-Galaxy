@@ -23,6 +23,44 @@
         <p class="tagline">Ride the rockets, dodge the ion storms, and be the first crew to reach the Andromeda Galaxy.</p>
       </header>
 
+      <div class="mode-tabs" role="tablist" aria-label="Game mode">
+        <button id="tab-local" class="mode-tab active" role="tab" aria-selected="true">🎮 Same device</button>
+        <button id="tab-online" class="mode-tab" role="tab" aria-selected="false">🌐 Online · own devices</button>
+      </div>
+
+      <!-- ---------- ONLINE: each player on their own device ---------- -->
+      <div id="online-setup" class="online-setup" hidden>
+        <div class="setup-section">
+          <h2>Your commander</h2>
+          <div class="crew-row online-profile" id="online-profile"></div>
+        </div>
+
+        <div id="online-entry" class="online-entry">
+          <button id="create-room" class="btn btn-primary">Create a room 🛰️</button>
+          <div class="join-row">
+            <input id="room-code" maxlength="5" placeholder="ROOM CODE" autocomplete="off" spellcheck="false" aria-label="Room code" />
+            <button id="join-room" class="btn btn-ghost">Join room</button>
+          </div>
+        </div>
+        <p id="online-error" class="online-error" role="alert"></p>
+
+        <div id="lobby" class="lobby" hidden>
+          <div class="lobby-head">
+            <div><div class="lobby-label">Room code</div><div id="lobby-code" class="lobby-code">-----</div></div>
+            <button id="copy-code" class="btn btn-ghost btn-sm">Copy code</button>
+          </div>
+          <ul id="lobby-list" class="lobby-list"></ul>
+          <p id="lobby-hint" class="lobby-hint"></p>
+          <div class="lobby-actions">
+            <button id="lobby-start" class="btn btn-primary">Launch mission 🚀</button>
+            <button id="lobby-leave" class="btn btn-ghost">Leave room</button>
+          </div>
+        </div>
+        <p class="hint">Every player opens this game on their own phone or computer. One creates a room and shares the 5-letter code, the others join with it. Up to 5 commanders, internet connection needed.</p>
+      </div>
+
+      <!-- ---------- SAME DEVICE: pass and play ---------- -->
+      <div id="local-setup">
       <div class="setup-section">
         <h2>Number of commanders</h2>
         <div id="count-picker" class="count-picker" role="radiogroup" aria-label="Number of players"></div>
@@ -32,6 +70,7 @@
         <h2>Crew roster</h2>
         <div id="roster" class="roster"></div>
       </div>
+      </div><!-- /local-setup part 1 (how-to below is shared) -->
 
       <details class="how-to">
         <summary>How to play</summary>
@@ -50,6 +89,7 @@
         </div>
       </details>
 
+      <div id="local-setup-2">
       <label class="test-switch">
         <input type="checkbox" id="test-toggle" />
         <span class="track"><span class="thumb"></span></span>
@@ -59,6 +99,7 @@
       <button id="launch-btn" class="btn btn-primary btn-big">
         <span>Launch mission</span> <span aria-hidden="true">🚀</span>
       </button>
+      </div><!-- /local-setup part 2 -->
       <p class="hint">Keys: hold <kbd>Space</kbd> to throw (harder the longer you hold), <kbd>Enter</kbd> quick roll · <kbd>+</kbd> <kbd>−</kbd> zoom · <kbd>0</kbd> reset view · <kbd>F</kbd> full screen</p>
     </div>
   </section>
@@ -110,6 +151,7 @@
         </div>
       </div>
 
+      <div id="net-badge" class="net-badge" hidden></div>
       <div class="turn-box">
         <div class="turn-label-row"><span class="turn-label">Current turn</span><span id="round-info" class="round-info"></span></div>
         <div id="turn-player" class="turn-player"></div>
@@ -172,6 +214,7 @@
       <div id="awards" class="awards"></div>
       <h3 class="res-h">Flight stats</h3>
       <div class="table-wrap"><table id="stats-table" class="stats-table"></table></div>
+      <p id="results-wait" class="muted" hidden>Waiting for the host to start a new mission…</p>
       <div class="modal-actions">
         <button id="again-btn" class="btn btn-primary">Play again</button>
         <button id="newcrew-btn" class="btn btn-ghost">New crew</button>
@@ -182,6 +225,9 @@
   <script src="js/lib/three.min.js"></script>
   <script src="js/lib/gsap.min.js"></script>
   <script src="js/lib/confetti.browser.js"></script>
+  <script src="js/lib/peerjs.min.js"></script>
+  <script src="js/rng.js"></script>
+  <script src="js/net.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/music.js"></script>
   <script src="js/camera.js"></script>

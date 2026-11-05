@@ -37,6 +37,16 @@ Keys: `Space` roll · `+` `−` zoom · `0` reset view.
 
 Built with **Three.js** (3D dice), **GSAP** (animation), **canvas-confetti**, a custom canvas particle engine, and Web Audio (music and sound).
 
+## Online multiplayer (each player on their own device)
+Pick **🌐 Online · own devices** on the setup screen, enter your name and emblem, then:
+1. One player taps **Create a room** and shares the 5-character room code.
+2. Everyone else enters the code and taps **Join room** (up to 5 commanders).
+3. The host taps **Launch mission**.
+
+It is still just HTML and JavaScript: devices connect directly to each other with WebRTC through the bundled [PeerJS](https://peerjs.com) library, which uses PeerJS's free public broker only to introduce them. Every device runs the whole game from the same random seed, so boards, dice, cosmic events and Galactic Shifts match everywhere; only throws and the host's continue/end choice are sent between devices. If someone disconnects, the host's device throws for them; if the host leaves, the mission ends for everyone.
+
+Online play needs an internet connection and the page served from a normal web address (for example GitHub Pages). Some strict corporate or school networks block WebRTC. To try it in one browser without the internet, open `index.html?net=local` in two tabs.
+
 ## Run
 Open `index.html` in a browser, or serve the folder (`python3 -m http.server 8080`) and visit http://localhost:8080. No build step is needed. The libraries are bundled in `js/lib/`, so the game works offline (only the Google Fonts need a connection, and it falls back to system fonts).
 
@@ -51,6 +61,8 @@ js/particles.js   canvas particle engine
 js/music.js       generative soundtrack
 js/audio.js       sound effects
 js/game.js        setup, turns, movement, events, win
+js/net.js         online rooms (PeerJS / WebRTC)
+js/rng.js         seeded random numbers shared by all devices
 js/starfield.js   animated background
-js/lib/           three.js r128, gsap 3.12.5, canvas-confetti 1.9.3
+js/lib/           three.js r128, gsap 3.12.5, canvas-confetti 1.9.3, peerjs 1.5.4
 ```
