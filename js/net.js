@@ -64,7 +64,15 @@ const Net = (() => {
   function broadcastLobby() { const view = lobby.map(l => ({ ...l })); sendAll({ t: "lobby", lobby: view }); emit("lobby", lobbyView()); }
 
   // ---------- host ----------
-  function host(profile, attempt = 0) {
+  /** PeerJS is only fetched once someone actually goes online. */
+  async function needPeer() {
+    if (useLocal || Loader.ready("peer")) return true;
+    try { await Loader.load(["peer"]); return true; }
+    catch { emit("error", "Couldn't load the online module. Check your internet connection."); return false; }
+  }
+
+  async function host(profile, attempt = 0) {
+    if (!(await needPeer())) return;
     leave(true);
     mode = "host";
     code = genCode();
@@ -140,7 +148,8 @@ const Net = (() => {
   }
 
   // ---------- client ----------
-  function join(roomCode, profile) {
+  async function join(roomCode, profile) {
+    if (!(await needPeer())) return;
     leave(true);
     mode = "client";
     code = String(roomCode || "").toUpperCase().replace(/[^A-Z0-9]/g, "");

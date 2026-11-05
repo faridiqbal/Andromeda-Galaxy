@@ -171,6 +171,7 @@ const Particles = (() => {
   function loop(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    if (canvas.offsetParent === null) { requestAnimationFrame(loop); return; } // game screen hidden: idle
     if (canvas.clientWidth !== W || canvas.clientHeight !== H) resize();
     update(dt);
     draw();
@@ -192,7 +193,6 @@ const Particles = (() => {
     ice: { colors: ["#ffffff", "#bdf3ff", "#7fe7ff"], speed: [10, 50], life: [0.5, 1.1], size: [2, 5], shape: "star", drag: 0.95 },
     green: { colors: ["#c8ffd6", "#3ee08f", "#9dffb0"], speed: [10, 30], life: [0.8, 1.4], size: [2, 4], drag: 0.97 },
     purple: { colors: ["#e0c3ff", "#c77dff", "#7b2ff7", "#ffffff"], speed: [10, 40], life: [0.6, 1.2], size: [2, 5], shape: "star" },
-    pink: { colors: ["#ff8fb4", "#ff4f9a", "#f15bb5"], speed: [10, 40], life: [0.5, 1], size: [3, 6], gravity: 40 },
     ember: { colors: ["#ffd166", "#ff6b35", "#ff2e63"], speed: [20, 70], life: [0.6, 1.3], size: [2, 4], shape: "streak", drag: 0.96 },
     gold: { colors: ["#ffe9a8", "#ffd166", "#ffffff"], speed: [5, 25], life: [1, 2], size: [2, 4], shape: "star", drag: 0.98 },
     dark: { colors: ["#7b2ff7", "#ff7b54", "#3a0ca3"], speed: [10, 30], life: [0.4, 0.9], size: [3, 6] },

@@ -50,6 +50,9 @@ Online play needs an internet connection and the page served from a normal web a
 ## Run
 Open `index.html` in a browser, or serve the folder (`python3 -m http.server 8080`) and visit http://localhost:8080. No build step is needed. The libraries are bundled in `js/lib/`, so the game works offline (only the Google Fonts need a connection, and it falls back to system fonts).
 
+## Loading
+The setup screen loads only about 200 KB. The 3D dice engine (Three.js), the animation library (GSAP) and the dice code are fetched when a mission launches, with a progress bar if that takes a moment (never during play). PeerJS is fetched only when you create or join an online room, and the confetti library quietly in the background once a game starts. Opening `index.html` straight from disk still works (it falls back to normal script loading).
+
 ## Structure
 ```
 index.html        markup & screens
@@ -60,6 +63,7 @@ js/camera.js      cinematic zoom / follow camera
 js/particles.js   canvas particle engine
 js/music.js       generative soundtrack
 js/audio.js       sound effects
+js/loader.js      on-demand loading of the big libraries (with progress)
 js/game.js        setup, turns, movement, events, win
 js/net.js         online rooms (PeerJS / WebRTC)
 js/rng.js         seeded random numbers shared by all devices

@@ -104,7 +104,7 @@
       input.value = c.name;
       input.setAttribute("aria-label", `Player ${i + 1} name`);
       input.oninput = () => { c.name = input.value; };
-      input.onkeydown = e => { if (e.key === "Enter") startGame(); };
+      input.onkeydown = e => { if (e.key === "Enter") launch(); };
 
       const cpu = document.createElement("button");
       cpu.type = "button";
@@ -1384,7 +1384,10 @@
       $("#online-profile").classList.add("locked");
       $("#lobby-code").textContent = r.code;
     });
-    Net.on("lobby", renderLobby);
+    Net.on("lobby", list => {
+      renderLobby(list);
+      if (!engineReady) Loader.load(["gsap", "three", "dice"]).catch(() => { /* retried at launch */ });
+    });
     Net.on("error", msg => {
       if (online && !Net.online) { alert(msg); backToSetup(); onlineError(msg); return; }
       onlineError(msg);
@@ -1394,7 +1397,7 @@
     });
     Net.on("start", m => {
       Sfx.select();
-      startGame({ seed: m.seed, roster: m.roster, mySeat: m.mySeat });
+      launch({ seed: m.seed, roster: m.roster, mySeat: m.mySeat });
     });
     Net.on("left", seat => {
       const p = players[seat];
@@ -1458,18 +1461,59 @@
   // ==================================================================
   //  WIRING
   // ==================================================================
+  // ---------- game engine: built on first launch only (keeps the setup screen light) ----------
+  let engineReady = false;
+  let launching = false;
+  async function ensureEngine() {
+    if (engineReady) return;
+    const box = $("#loader");
+    // only show the progress screen if loading actually takes a moment (cached = instant)
+    const show = setTimeout(() => { box.hidden = false; }, 150);
+    const steps = [[0.12, "Loading animation engine…"], [0.9, "Loading 3D dice engine…"], [1, "Building the galaxy…"]];
+    try {
+      await Loader.load(["gsap", "three", "dice"], f => {
+        const pct = Math.round(f * 100);
+        $("#loader-fill").style.width = pct + "%";
+        $("#loader-pct").textContent = pct + "%";
+        box.setAttribute("aria-valuenow", pct);
+        $("#loader-step").textContent = steps.find(([lim]) => f <= lim)[1];
+      });
+      $("#loader-step").textContent = "Building the galaxy…";
+      await new Promise(r => requestAnimationFrame(r));
+      Board.build($("#grid"), $("#paths"));
+      Dice3D.init($("#dice-stage"));
+      Camera.init($("#camera"), $("#board"));
+      Particles.init($("#particles"));
+      setupPreview();
+      engineReady = true;
+    } finally {
+      clearTimeout(show);
+      box.hidden = true;
+    }
+    // the finish celebration isn't needed until someone wins: fetch it quietly
+    setTimeout(() => Loader.load(["confetti"]).catch(() => { /* no confetti, no problem */ }), 3000);
+  }
+
+  /** Load what the mission needs (with a progress screen if necessary), then start it. */
+  async function launch(net = null) {
+    if (launching) return;
+    launching = true;
+    try { await ensureEngine(); }
+    catch (err) {
+      launching = false;
+      alert("Couldn't load the game files. Check your connection and try again.");
+      if (net) { Net.leave(true); showOnlineEntry(); }
+      return;
+    }
+    launching = false;
+    startGame(net);
+  }
+
   function init() {
-    Board.build($("#grid"), $("#paths"));
-    Board.randomize();
-    Dice3D.init($("#dice-stage"));
-    Camera.init($("#camera"), $("#board"));
-    Particles.init($("#particles"));
-    setupAmbientParticles();
     renderCountPicker();
     renderRoster();
     renderLegend();
     renderTestDice();
-    setupPreview();
 
     const tt = $("#test-toggle");
     tt.checked = testMode;
@@ -1483,7 +1527,7 @@
     // button click sounds
     document.addEventListener("click", e => { if (e.target.closest(".btn, .icon-btn, .cpu-toggle, .count-picker button")) Sfx.click(); });
 
-    $("#launch-btn").onclick = () => startGame();
+    $("#launch-btn").onclick = () => launch();
     const rb = $("#roll-btn");
     rb.addEventListener("pointerdown", e => { if (e.button === 0 || e.pointerType !== "mouse") { e.preventDefault(); startCharge(); } });
     rb.addEventListener("pointerup", () => endCharge(true));
@@ -1513,7 +1557,7 @@
     const fsSync = () => {
       const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
       document.querySelectorAll(".fs-toggle").forEach(b => { b.classList.toggle("on", on); b.title = on ? "Exit full screen (F)" : "Full screen (F)"; });
-      setTimeout(() => Dice3D.resize(), 150);
+      setTimeout(() => engineReady && Dice3D.resize(), 150);
     };
     document.addEventListener("fullscreenchange", fsSync);
     document.addEventListener("webkitfullscreenchange", fsSync);

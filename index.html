@@ -104,6 +104,17 @@
     </div>
   </section>
 
+  <!-- ============ LOADING (only before a mission, never during play) ============ -->
+  <div id="loader" class="loader" hidden role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100">
+    <div class="loader-card glass">
+      <div class="logo-orbit" aria-hidden="true"><span>🚀</span></div>
+      <div class="loader-title">Preparing launch</div>
+      <div class="loader-bar"><span id="loader-fill"></span></div>
+      <div id="loader-pct" class="loader-pct">0%</div>
+      <div id="loader-step" class="loader-step">Loading 3D dice engine…</div>
+    </div>
+  </div>
+
   <!-- ============ GAME SCREEN ============ -->
   <section id="game" class="screen">
     <div class="board-area">
@@ -222,10 +233,8 @@
     </div>
   </div>
 
-  <script src="js/lib/three.min.js"></script>
-  <script src="js/lib/gsap.min.js"></script>
-  <script src="js/lib/confetti.browser.js"></script>
-  <script src="js/lib/peerjs.min.js"></script>
+  <!-- big libraries (Three.js, GSAP, PeerJS, confetti) and dice.js load on demand: see js/loader.js -->
+  <script src="js/loader.js"></script>
   <script src="js/rng.js"></script>
   <script src="js/net.js"></script>
   <script src="js/audio.js"></script>
@@ -233,7 +242,6 @@
   <script src="js/camera.js"></script>
   <script src="js/particles.js"></script>
   <script src="js/starfield.js"></script>
-  <script src="js/dice.js"></script>
   <script src="js/board.js"></script>
   <script src="js/game.js"></script>
 </body>

@@ -56,12 +56,14 @@ const Music = (() => {
     o.start(t); o.stop(t + dur + 0.1);
   }
 
+  let hatBuf = null; // built once, reused for every hi-hat
   function hat(t, vol) {
-    const len = 0.05;
-    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * len), ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
-    const src = ctx.createBufferSource(); src.buffer = buf;
+    if (!hatBuf) {
+      hatBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.05), ctx.sampleRate);
+      const d = hatBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    }
+    const src = ctx.createBufferSource(); src.buffer = hatBuf;
     const f = ctx.createBiquadFilter(); f.type = "highpass"; f.frequency.value = 7000;
     const g = ctx.createGain(); g.gain.value = vol;
     src.connect(f).connect(g).connect(out);

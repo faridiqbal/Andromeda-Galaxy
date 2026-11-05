@@ -28,6 +28,7 @@ const Camera = (() => {
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    if (host.offsetParent === null) { requestAnimationFrame(frame); return; } // game screen hidden: idle
     if (followFn) {
       const p = followFn();
       target.x = p.x; target.y = p.y;
