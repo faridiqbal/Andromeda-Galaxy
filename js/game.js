@@ -1590,6 +1590,14 @@
 
     document.addEventListener("keyup", e => { if (e.code === "Space") { e.preventDefault(); endCharge(true); } });
 
+    // keep the game on the device (instant repeat visits, offline same-device play).
+    // Only on real web hosting: not from disk, and silently skipped where browsers forbid it.
+    if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost") && !params.has("nosw")) {
+      window.addEventListener("load", () => {
+        try { navigator.serviceWorker.register("sw.js").catch(() => { /* not allowed here */ }); } catch { /* sandboxed */ }
+      });
+    }
+
     // tiny hook for automated tests
     window.__aq = { teleport: (seat, n) => { if (players[seat]) { players[seat].pos = n; layoutTokens(true); updatePanel(); } }, get state() { return { phase, current, round, nextEventRound, online: online && { ...online, rollSeq, code: Net.code, host: Net.isHost }, players: players.map(p => ({ name: p.name, pos: p.pos, finished: p.finished, place: p.place, offline: p.offline, stats: p.stats })), board: JSON.stringify(Board.JUMPS) + JSON.stringify(Board.BEACONS) }; } };
   }

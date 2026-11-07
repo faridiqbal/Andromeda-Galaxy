@@ -53,6 +53,13 @@ Open `index.html` in a browser, or serve the folder (`python3 -m http.server 808
 ## Loading
 The setup screen loads only about 200 KB. The 3D dice engine (Three.js), the animation library (GSAP) and the dice code are fetched when a mission launches, with a progress bar if that takes a moment (never during play). PeerJS is fetched only when you create or join an online room, and the confetti library quietly in the background once a game starts. Opening `index.html` straight from disk still works (it falls back to normal script loading).
 
+## Hosting on Cloudflare (caching)
+Deploy the folder as-is to Cloudflare Pages (or Workers static assets); no build step.
+- **`_headers`** (read by Cloudflare automatically): game files are re-checked on every visit so updates appear at once; the libraries in `js/lib/` (version numbers in their file names) are cached for a year; `sw.js` is never cached.
+- **`sw.js`** (service worker): keeps the game on the player's device. Game files are fetched fresh when online and served from the device when offline or on a very slow connection; each library is saved the first time it's needed and then loads instantly. Same-device play works fully offline after one visit. Online play's connections are never cached.
+- If you upgrade a library, give the new file a new versioned name (e.g. `three-r129.min.js`) and update `js/loader.js`.
+- In the Cloudflare dashboard, leave **Rocket Loader off** for this site: it rewrites script loading and can break the game's load order. Brotli compression and HTTP/3 are fine (on by default).
+
 ## Structure
 ```
 index.html        markup & screens
@@ -64,9 +71,11 @@ js/particles.js   canvas particle engine
 js/music.js       generative soundtrack
 js/audio.js       sound effects
 js/loader.js      on-demand loading of the big libraries (with progress)
+sw.js             service worker (offline + instant repeat visits)
+_headers          Cloudflare cache rules
 js/game.js        setup, turns, movement, events, win
 js/net.js         online rooms (PeerJS / WebRTC)
 js/rng.js         seeded random numbers shared by all devices
 js/starfield.js   animated background
-js/lib/           three.js r128, gsap 3.12.5, canvas-confetti 1.9.3, peerjs 1.5.4
+js/lib/           three.js r128, gsap 3.12.5, canvas-confetti 1.9.3, peerjs 1.5.4 (version in each file name)
 ```

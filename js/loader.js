@@ -6,11 +6,11 @@
    isn't possible (e.g. opened straight from disk) it falls back to plain <script> tags. */
 const Loader = (() => {
   const LIBS = {
-    gsap:     { src: "js/lib/gsap.min.js",          size: 72214,  ready: () => !!window.gsap },
-    three:    { src: "js/lib/three.min.js",         size: 603445, ready: () => !!window.THREE },
+    gsap:     { src: "js/lib/gsap-3.12.5.min.js",          size: 72214,  ready: () => !!window.gsap },
+    three:    { src: "js/lib/three-r128.min.js",         size: 603445, ready: () => !!window.THREE },
     dice:     { src: "js/dice.js",                  size: 9000,   ready: () => typeof Dice3D !== "undefined", after: ["three"] },
-    peer:     { src: "js/lib/peerjs.min.js",        size: 92865,  ready: () => typeof window.Peer === "function" },
-    confetti: { src: "js/lib/confetti.browser.js",  size: 24906,  ready: () => typeof window.confetti === "function" },
+    peer:     { src: "js/lib/peerjs-1.5.4.min.js",        size: 92865,  ready: () => typeof window.Peer === "function" },
+    confetti: { src: "js/lib/confetti-1.9.3.browser.js",  size: 24906,  ready: () => typeof window.confetti === "function" },
   };
   const got = {};      // bytes received per library
   const pending = {};  // in-flight promises

@@ -1,0 +1,15 @@
+# Cloudflare Pages / Workers static assets read this file automatically.
+# Game files: always check for a newer version (fast 304 replies when nothing changed).
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+  X-Content-Type-Options: nosniff
+
+# Libraries carry their version in the file name and never change: keep them for a year.
+/js/lib/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+
+# The service worker itself must never be cached, so updates are picked up.
+/sw.js
+  ! Cache-Control
+  Cache-Control: no-cache, no-store, must-revalidate
